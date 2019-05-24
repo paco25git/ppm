@@ -17,7 +17,7 @@ class CameraOpenError(Exception):
 class Camera(object):
     def __init__(self):
         #uc480_file='C:\\Program Files\\Thorlabs\\Scientific Imaging\\ThorCam\\uc480.dll' #uc480_64.dll for 64bits
-        uc480_file='C:\\Users\\namid\\Desktop\\pythonCamera\\uc480.dll' #other location
+        uc480_file='C:\\Users\\namid\\Desktop\\pythonCamera\\ppmRep\\uc480.dll' #other location
         if os.path.isfile(uc480_file):
             self.bit_depth = None
             self.roi_shape = None
