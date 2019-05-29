@@ -7,6 +7,7 @@
 #Part of this program was made taking code from https://stackoverflow.com/questions/44404349/pyqt-showing-video-stream-from-opencv
 #Part of this program was made taking code from https://github.com/pyqt/examples/blob/master/widgets/sliders.py
 #The GUI is located in the library ppmgui.py
+#The controls for the camera are located in the library camdcx
 
 ###-------Importing usefull libraries
 import sys
@@ -21,8 +22,29 @@ import threading
 import logging
 import ppmgui
 
+def detectCameras():
+    valid_cameras=[]
+    for i in range (3):
+        cap=cv2.VideoCapture(i)
+        if cap is None or not cap.isOpened():
+            None
+        else:
+            valid_cameras.append(i)
+    cap.release()            
+    cv2.destroyAllWindows()
+    return valid_cameras
+
 if __name__ == '__main__':
+    
+    cameras=detectCameras()
+        
+    version="1.0"
     app = ppmgui.QApplication(sys.argv)
-    ex = ppmgui.App()
+    ex = ppmgui.App(cameras)
     ex.show()
+    
+    welcome=ppmgui.dialog()
+    welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
+    
     sys.exit(app.exec_())
+    cv2.destroyAllWindows()    
