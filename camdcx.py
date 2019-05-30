@@ -53,8 +53,10 @@ class Camera(object):
             self.set_roi_pos(self.roi_pos)
             self.set_framerate(framerate)
             self.set_exposure(exposure)
+            return True
         else:
-            raise CameraOpenError("Opening the ThorCam failed with error code "+str(i))
+            #raise CameraOpenError("Opening the ThorCam failed with error code "+str(i))
+            return False
 			
     def close(self):
         if self.handle != None:

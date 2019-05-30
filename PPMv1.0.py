@@ -21,10 +21,18 @@ import camdcx
 import threading
 import logging
 import ppmgui
+import queue
 
-def detectCameras():
+def detectCameras(camera):
     valid_cameras=[]
-    for i in range (3):
+    
+    if camera.open(8, (1280, 1024), (0,0), "ThorCam FS", 30,1) is True:
+        valid_cameras.append("Thorlabs")
+        #camera.close()
+    else:
+        None
+
+    for i in range (2):
         cap=cv2.VideoCapture(i)
         if cap is None or not cap.isOpened():
             None
@@ -32,19 +40,58 @@ def detectCameras():
             valid_cameras.append(i)
     cap.release()            
     cv2.destroyAllWindows()
-    return valid_cameras
+    return valid_cameras 
+    
+def main(args):
+    try: 
+        camThLabs=camdcx.Camera()
+        Ndef=5
+        n=1
+        mem=[]
+        cameras=detectCameras(camThLabs)
+        
+        while True:
+            mem.append(camThLabs.initialize_memory())
+            camThLabs.add_to_sequence(mem[n-1][0],mem[n-1][1])
+            n+=1
+            if n>Ndef:
+                #print(mem)
+                break
+            
+        version="1.0"
+        app = ppmgui.QApplication(sys.argv)
+        ex = ppmgui.App(cameras,Ndef)
+        live=ppmgui.live(camThLabs,mem)
+        live.livestream.connect(ex.setImage)
+        live.start()
+        ex.show()
+        
+        welcome=ppmgui.dialog()
+        welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
+        
+        
+        sys.exit(app.exec_())
+    finally:
+        camThLabs.close()
+
+   
 
 if __name__ == '__main__':
+    ###-------Importing usefull libraries
+    import sys
+    import cv2
+    import numpy as np
+    import os.path
+    import time
+    import collections as coll
+    from ctypes import *
+    import camdcx
+    import threading
+    import logging
+    import ppmgui
+    import queue
     
-    cameras=detectCameras()
-        
-    version="1.0"
-    app = ppmgui.QApplication(sys.argv)
-    ex = ppmgui.App(cameras)
-    ex.show()
+    main(sys.argv[1:])
     
-    welcome=ppmgui.dialog()
-    welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
     
-    sys.exit(app.exec_())
-    cv2.destroyAllWindows()    
+    
