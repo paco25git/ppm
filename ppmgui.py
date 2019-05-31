@@ -13,11 +13,22 @@ from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5.QtCore import QSize, QThread, pyqtSignal, pyqtSlot, Qt
 import time
 import cv2
-import camdcx
+import numpy as np
+from ctypes import *
+
+def do_processing(memory):
+    imgs=[]
+    for i in range(len(memory)):
+        imgs.append(np.frombuffer(memory[i][0], c_ubyte))
+    sd=np.std(imgs,axis=0)
+    mn=np.mean(imgs,axis=0)
+    res2=sd/mn
+    return res2
 
 #a class for making a thread that handles the camera capture
 class live(QThread):
     livestream = pyqtSignal(QImage)
+    liveproces = pyqtSignal(QImage)
     
     def __init__(self,camera, mem):
         super(live,self).__init__(parent=None)
@@ -40,6 +51,17 @@ class live(QThread):
                 self.livestream.emit(p)
                 if self.n>len(self.mem):
                     break
+                    
+            newimg=do_processing(self.mem).reshape(1024,1280)
+            newimg*=90 
+            newimg+=60
+            newimg=newimg.astype(np.uint8)         
+            rgbImage2 = cv2.cvtColor(newimg, cv2.COLOR_BGR2RGB)
+            h2, w2, ch2 = rgbImage2.shape
+            bytesPerLine2 = ch2 * w2
+            convertToQtFormat = QtGui.QImage(rgbImage2.data, w2, h2, bytesPerLine2, QtGui.QImage.Format_RGB888)
+            p2 = convertToQtFormat.scaled(1353, 1233,QtCore.Qt.KeepAspectRatio)
+            self.liveproces.emit(p2)
     
 
 #a class for making subWindows outside from the main window
@@ -53,7 +75,7 @@ class subwindow(QWidget):
             self.close()
                         
     def createWindowManageCamera(self, current):
-        
+        self.current=current
         self.setWindowTitle("Manage Camera")      
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         self.resize(700,400)
@@ -67,12 +89,13 @@ class subwindow(QWidget):
         self.expV=QVBoxLayout()
         self.expH=QHBoxLayout()
         
-        self.camSel=QLabel("Camera selected = "+str(current))
+        self.camSel=QLabel("Camera selected = "+str(self.current.name))
         self.expL=QLabel("Current value: ")
         self.expU=QLabel(" [ms]")
         self.expVal=QSpinBox()
         self.expVal.setRange(1,100)
         self.expVal.setSingleStep(1) 
+        
         self.expVal.setMaximumWidth(80)
         self.expSlider=QSlider(Qt.Horizontal)
         self.expSlider.setFocusPolicy(Qt.StrongFocus)
@@ -91,12 +114,12 @@ class subwindow(QWidget):
         self.initButton=QPushButton("Init Cam",self)
         self.initButton.setMaximumWidth(150)
         self.exitButton=QPushButton("Exit Cam",self)
-        self.exitButton.setMaximumWidth(150)
-        
+        self.exitButton.setMaximumWidth(150)        
         
         self.expSlider.valueChanged.connect(self.expVal.setValue)
         self.expVal.valueChanged.connect(self.expSlider.setValue)
         self.expVal.valueChanged.connect(self.changeExp)
+        self.expVal.setValue(self.current.get_exposure())
         
         self.capBoxLayout.addWidget(self.initButton) 
         self.capBoxLayout.addWidget(self.playButton)
@@ -124,12 +147,12 @@ class subwindow(QWidget):
         
     def changeExp(self):
         self.exp=self.expVal.value()
-        print("value changed o %d"%self.exp)
-        #exec('print("active=%d"%camThLabs.get_active_image_mem())')
-        #cmd.put()
+        if str(type(self.current))=="<class 'camdcx.Camera'>":
+            self.current.set_exposure(self.exp)
         return self.exp
         
-    def createLSIProcessingOptions(self,Ndef):
+    def createLSIProcessingOptions(self,Ndef,current):
+        self.current=current
         self.setWindowTitle("LSI Processing options")      
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         self.resize(700,400)
@@ -191,6 +214,7 @@ class subwindow(QWidget):
         self.expSlider.valueChanged.connect(self.expVal.setValue)
         self.expVal.valueChanged.connect(self.expSlider.setValue)
         self.expVal.valueChanged.connect(self.changeExp)
+        self.expVal.setValue(self.current.get_exposure())
         
         self.expH.addWidget(self.expL)
         self.expH.addWidget(self.expVal)
@@ -277,7 +301,6 @@ class App(QMainWindow):
         self.Ndef=Ndef
         self.initUI()
         
-        
     def keyPressEvent(self, e):  
         if e.key() == QtCore.Qt.Key_Escape:
             print("escape")
@@ -295,7 +318,6 @@ class App(QMainWindow):
         self.mdi.addSubWindow(sub)
         sub.show()
         
-
     def simpleDialog(self):
         self.myDialog=dialog()
         self.myDialog.createAboutDialog("About this program")
@@ -307,7 +329,7 @@ class App(QMainWindow):
         
     def createASubwindow2(self):
         self.procOpt=subwindow()
-        self.procOpt.createLSIProcessingOptions(self.Ndef)
+        self.procOpt.createLSIProcessingOptions(self.Ndef,self.currentCam)
         self.procOpt.show()
         
     def selectedCameraThorlabs(self): 
@@ -315,38 +337,42 @@ class App(QMainWindow):
         self.camThorlabsAct.setFont(self.fBond)
         
         for i in self.cameras:
-            if i=="Thorlabs":
-                exec('self.cam{}Act.setFont(self.fBond)'.format(i))
+            if i.name=="Thorlabs":
+                exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
-                exec('self.cam{}Act.setFont(self.fNBond)'.format(i))
+                exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
                 
-    def selectedCamera0(self):  
+    def selectedCameranativeCam0(self):  
         self.currentCam=self.cameras[1]
         for i in self.cameras:
-            if i==0:
-                exec('self.cam{}Act.setFont(self.fBond)'.format(i))
+            if i.name=="nativeCam0":
+                exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
-                exec('self.cam{}Act.setFont(self.fNBond)'.format(i))
+                exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
         
-    def selectedCamera1(self): 
+    def selectedCameranativeCam1(self): 
         self.currentCam=self.cameras[2]
         for i in self.cameras:
-            if i==1:
-                exec('self.cam{}Act.setFont(self.fBond)'.format(i))
+            if i.name=="nativeCam1":
+                exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
-                exec('self.cam{}Act.setFont(self.fNBond)'.format(i))
+                exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
         
-    def selectedCamera2(self):
+    def selectedCameranativeCam2(self):
         self.currentCam=self.cameras[3]
         for i in self.cameras:
-            if i==2:
-                exec('self.cam{}Act.setFont(self.fBond)'.format(i))
+            if i.name=="nativeCam2":
+                exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
-                exec('self.cam{}Act.setFont(self.fNBond)'.format(i))
+                exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
                 
     @pyqtSlot(QImage)
     def setImage(self, image):
         self.label.setPixmap(QPixmap.fromImage(image))
+        
+    @pyqtSlot(QImage)
+    def setImage2(self, image):
+        self.label2.setPixmap(QPixmap.fromImage(image))
         
     def initUI(self):
         self.setWindowTitle(self.title)
@@ -355,6 +381,10 @@ class App(QMainWindow):
         self.label = QLabel(self)
         self.label.move(10, 120)
         self.label.resize(1353, 1233)
+        
+        self.label2 = QLabel(self)
+        self.label2.move(1363,120)
+        self.label2.resize(1353,1233) 
                
         
         #----setting the menubar
@@ -380,11 +410,11 @@ class App(QMainWindow):
         self.fNBond.setBold(False)
         
         for i in self.cameras:
-            exec('self.cam{}Act=QAction("Camera {}",self)'.format(i,i))
-            exec('self.cam{}Act.triggered.connect(self.selectedCamera{})'.format(i,i))
-            exec('selCam.addAction(self.cam{}Act)'.format(i))
-            
-        exec('self.cam{}Act.setFont(self.fBond)'.format(self.cameras[0]))
+            exec('self.cam{}Act=QAction("Camera {}",self)'.format(i.name,i.name))
+            exec('self.cam{}Act.triggered.connect(self.selectedCamera{})'.format(i.name,i.name))
+            exec('selCam.addAction(self.cam{}Act)'.format(i.name))
+        exec('self.cam{}Act.setFont(self.fBond)'.format(self.cameras[0].name))
+                
         mcAct=QAction("Manage Camera",self)
         mcAct.triggered.connect(self.createASubwindow)
         mcAct.setShortcut("Ctrl+M")             

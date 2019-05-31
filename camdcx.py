@@ -21,7 +21,7 @@ class Camera(object):
         if os.path.isfile(uc480_file):
             self.bit_depth = None
             self.roi_shape = None
-            self.camera = None
+            self.name = None
             self.handle = None
             self.meminfo = None
             self.exposure = None
@@ -31,10 +31,10 @@ class Camera(object):
         else:
             raise CameraOpenError("ThorCam drivers not available.")
 	
-    def open(self, bit_depth=8, roi_shape=(1280, 1024), roi_pos=(0,0), camera="ThorCam FS", exposure = 10, framerate = 10.0):
+    def open(self, bit_depth=8, roi_shape=(1280, 1024), roi_pos=(0,0), name="Thorlabs", exposure = 10, framerate = 10.0):
         self.bit_depth = bit_depth
         self.roi_shape = roi_shape
-        self.camera = camera
+        self.name = name
         self.roi_pos = roi_pos
         
         is_InitCamera = self.uc480.is_InitCamera
