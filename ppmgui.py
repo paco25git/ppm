@@ -34,6 +34,7 @@ class live(QThread):
         super(live,self).__init__(parent=None)
         self.camera=camera
         self.mem=mem        
+        self.colormap="jet"
         
     def run(self):    
         while True:		
@@ -53,16 +54,37 @@ class live(QThread):
                     break
                     
             newimg=do_processing(self.mem).reshape(1024,1280)
-            newimg*=90 
-            newimg+=60
-            newimg=newimg.astype(np.uint8)         
+            newimg*=1000 
+            #newimg+=60
+            newimg=newimg.astype(np.uint8)
+            
+            if self.colormap=="jet":
+                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_JET)
+                
+            if self.colormap=="hot":
+                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_HOT)
+                
+            if self.colormap=="aut":
+                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_AUTUMN)
+                
+            if self.colormap=="bone":
+                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_BONE)
+                
+                
+            #exec('newimg=cv2.applyColorMap(newimg, cv2.{})'.format(self.colormap))
+            #print(self.colormap)
+            #newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_JET)
             rgbImage2 = cv2.cvtColor(newimg, cv2.COLOR_BGR2RGB)
             h2, w2, ch2 = rgbImage2.shape
             bytesPerLine2 = ch2 * w2
             convertToQtFormat = QtGui.QImage(rgbImage2.data, w2, h2, bytesPerLine2, QtGui.QImage.Format_RGB888)
             p2 = convertToQtFormat.scaled(1353, 1233,QtCore.Qt.KeepAspectRatio)
             self.liveproces.emit(p2)
-    
+            
+    @pyqtSlot(str)
+    def changeColorMap(self,cm):
+        self.colormap=cm
+        
 
 #a class for making subWindows outside from the main window
 class subwindow(QWidget):
@@ -287,6 +309,7 @@ class dialog(QDialog):
                 
 class App(QMainWindow):
     count=0
+    colMap = pyqtSignal(str)
     def __init__(self,cameras,Ndef):
         super(App,self).__init__()
         self.mdi = QMdiArea()
@@ -299,6 +322,8 @@ class App(QMainWindow):
         self.cameras=cameras
         self.currentCam=self.cameras[0]
         self.Ndef=Ndef
+        self.colorMaps=["jet","hot","aut","bone"]
+        self.colorMap=self.colorMaps[0]
         self.initUI()
         
     def keyPressEvent(self, e):  
@@ -365,7 +390,43 @@ class App(QMainWindow):
                 exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
                 exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
-                
+    
+    def selectedJet(self):
+        self.colorMap=self.colorMaps[0] 
+        self.colMap.emit(self.colorMap)
+        for i in self.colorMaps:
+            if i=="jet":
+                exec('self.{}Act.setFont(self.fBond)'.format(i))
+            else:
+                exec('self.{}Act.setFont(self.fNBond)'.format(i))
+        
+    def selectedHot(self):
+        self.colorMap=self.colorMaps[1]
+        self.colMap.emit(self.colorMap)
+        for i in self.colorMaps:
+            if i=="hot":
+                exec('self.{}Act.setFont(self.fBond)'.format(i))
+            else:
+                exec('self.{}Act.setFont(self.fNBond)'.format(i))
+        
+    def selectedAutumn(self):
+        self.colorMap=self.colorMaps[2]
+        self.colMap.emit(self.colorMap)
+        for i in self.colorMaps:
+            if i=="aut":
+                exec('self.{}Act.setFont(self.fBond)'.format(i))
+            else:
+                exec('self.{}Act.setFont(self.fNBond)'.format(i))
+        
+    def selectedBone(self):
+        self.colorMap=self.colorMaps[3]
+        self.colMap.emit(self.colorMap)
+        for i in self.colorMaps:
+            if i=="bone":
+                exec('self.{}Act.setFont(self.fBond)'.format(i))
+            else:
+                exec('self.{}Act.setFont(self.fNBond)'.format(i))
+        
     @pyqtSlot(QImage)
     def setImage(self, image):
         self.label.setPixmap(QPixmap.fromImage(image))
@@ -425,6 +486,20 @@ class App(QMainWindow):
         newWAct=QAction("New Window",self)
         newWAct.triggered.connect(self.newWindowMDI)
         viewMenu.addAction(newWAct)
+        chcmct=viewMenu.addMenu("Change Color Map")
+        self.jetAct=QAction("Jet",self)
+        self.jetAct.setFont(self.fBond)
+        self.jetAct.triggered.connect(self.selectedJet)
+        chcmct.addAction(self.jetAct)
+        self.hotAct=QAction("Hot",self)
+        self.hotAct.triggered.connect(self.selectedHot)
+        chcmct.addAction(self.hotAct)
+        self.autAct=QAction("Autumn",self)
+        self.autAct.triggered.connect(self.selectedAutumn)
+        chcmct.addAction(self.autAct)
+        self.boneAct=QAction("Bone",self)
+        self.boneAct.triggered.connect(self.selectedBone)
+        chcmct.addAction(self.boneAct)
         
         #SEARCH---
         searchMenu = mainMenu.addMenu('Search')

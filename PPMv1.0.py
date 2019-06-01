@@ -35,12 +35,14 @@ def detectCameras(camera):
     cv2.destroyAllWindows()
     return valid_cameras 
     
+
+    
 def main(args):
     try:         
         version="1.0"        
         
         camThLabs=camdcx.Camera()   
-        Ndef=10        
+        Ndef=10       
         mem=[]
         
         cameras=detectCameras(camThLabs) 
@@ -70,6 +72,7 @@ def main(args):
             live=ppmgui.live(camThLabs,mem)
             live.livestream.connect(ex.setImage)
             live.liveproces.connect(ex.setImage2)
+            ex.colMap.connect(live.changeColorMap)
             live.start()
                 
         sys.exit(app.exec_())
@@ -79,6 +82,7 @@ def main(args):
 
 if __name__ == '__main__':
     ###-------Importing usefull libraries
+    
     import sys
     import cv2
     import numpy as np
