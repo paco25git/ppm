@@ -70,10 +70,6 @@ class live(QThread):
             if self.colormap=="bone":
                 newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_BONE)
                 
-                
-            #exec('newimg=cv2.applyColorMap(newimg, cv2.{})'.format(self.colormap))
-            #print(self.colormap)
-            #newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_JET)
             rgbImage2 = cv2.cvtColor(newimg, cv2.COLOR_BGR2RGB)
             h2, w2, ch2 = rgbImage2.shape
             bytesPerLine2 = ch2 * w2
@@ -95,7 +91,7 @@ class subwindow(QWidget):
     def keyPressEvent(self, e):  
         if e.key() == QtCore.Qt.Key_Escape:
             self.close()
-                        
+            
     def createWindowManageCamera(self, current):
         self.current=current
         self.setWindowTitle("Manage Camera")      
@@ -253,6 +249,24 @@ class subwindow(QWidget):
         self.genLay.addWidget(self.expBox)
         self.setLayout(self.genLay)
                
+class histo(QWidget):
+    def __init__(self):
+        super(histo,self).__init__(parent=None)
+        
+    def keyPressEvent(self, e):  
+        if e.key() == QtCore.Qt.Key_Escape:
+            
+            self.close()
+            
+    def closeEvent(self, event):
+        print ("User has clicked the red x on the main window")
+        event.accept()
+        
+    def createHistSubW(self):
+        self.setWindowTitle("Histogram tool")      
+        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.resize(1200,400)
+           
 class dialog(QDialog):
     
     def __init__(self):
@@ -435,9 +449,17 @@ class App(QMainWindow):
     def setImage2(self, image):
         self.label2.setPixmap(QPixmap.fromImage(image))
         
+        
+    def createHistogram(self):
+        self.histFlag=True
+        self.histSubW=histo()
+        self.histSubW.createHistSubW()
+        self.histSubW.show()
+    
     def initUI(self):
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height) 
+        self.histFlag=False
         
         self.label = QLabel(self)
         self.label.move(10, 120)
@@ -510,6 +532,9 @@ class App(QMainWindow):
         lsiM=QAction("LSI options",self)
         lsiM.triggered.connect(self.createASubwindow2)
         poAct.addAction(lsiM)
+        histAct=QAction("Show histogram",self)
+        histAct.triggered.connect(self.createHistogram)
+        toolsMenu.addAction(histAct)
         
         #HELP-----
         helpMenu = mainMenu.addMenu('Help')

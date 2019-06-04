@@ -35,16 +35,19 @@ def detectCameras(camera):
     cv2.destroyAllWindows()
     return valid_cameras 
     
-
+def event(self):
+    print("an event ocurred")
     
 def main(args):
-    try:         
+    try: 
+        
         version="1.0"        
         
         camThLabs=camdcx.Camera()   
-        Ndef=10       
+        Ndef=5       
         mem=[]
-        
+        theevent = Events()
+        theevent.on_change+=event
         cameras=detectCameras(camThLabs) 
         app = ppmgui.QApplication(sys.argv)
         ex = ppmgui.App(cameras,Ndef)
@@ -68,7 +71,8 @@ def main(args):
                 if n>Ndef:
                     #print(mem)
                     break
-                    
+            camThLabs.init_event(0,2)
+            
             live=ppmgui.live(camThLabs,mem)
             live.livestream.connect(ex.setImage)
             live.liveproces.connect(ex.setImage2)
@@ -95,7 +99,7 @@ if __name__ == '__main__':
     import logging
     import ppmgui
     import queue
-    
+    from events import Events
     main(sys.argv[1:])
     
     

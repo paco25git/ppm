@@ -230,3 +230,17 @@ class Camera(object):
 		
     def init_image_queue(self):
         self.uc480.is_InitImageQueue(self.handle,0)
+        
+    def init_event(self,handleEvent, which):
+        self.handleEvent=c_int(handleEvent)
+        s=self.uc480.is_InitEvent(self.handle, self.handleEvent, which)
+        return s
+        
+    def enable_event(self, which):
+        s= self.uc480.is_EnableEvent(self.handle,which)
+        return s
+        
+        
+        
+        
+        
