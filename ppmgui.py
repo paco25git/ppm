@@ -54,7 +54,7 @@ class live(QThread):
                     break
                     
             newimg=do_processing(self.mem).reshape(1024,1280)
-            newimg*=1000 
+            newimg*=3000 
             #newimg+=60
             newimg=newimg.astype(np.uint8)
             

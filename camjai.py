@@ -6,6 +6,7 @@
 
 import os.path
 from ctypes import *
+import time
 #import numpy as np
 
 class CameraOpenError(Exception):
@@ -51,8 +52,10 @@ class Camera(object):
             self.retval=self.jaifactory.J_Factory_GetNumOfCameras(self.hFactory, byref(self.nCameras))
            
             if self.retval==0 and self.nCameras.value>0:
-                print("%d cameras have been found \nCameras List: \n"%self.nCameras.value)
-                self.listCameras={}
+                print("%d cameras have been found" %self.nCameras.value)
+                print("Checking for repited cameras with diferent drivers")
+                print("Cameras List: \n")
+                self.listCameras=[]
                 #Run through the list of found cameras
                 for i in range(self.nCameras.value):
                     #Get camera ID
@@ -60,22 +63,51 @@ class Camera(object):
                     self.retval=self.jaifactory.J_Factory_GetCameraIDByIndex(self.hFactory,i,self.sCameradId,byref(self.sizeId))
                     if self.retval==0:
                         print("Camera %d =%s"%(i,self.sCameradId.value))
-                        if str(self.sCameradId.value).find(self.driver)!=-1:                            
-                            self.camHTemp=c_void_p(i)
-                            self.listCameras[self.sCameradId.value]=self.camHTemp                        
+                        if str(self.sCameradId.value).find(self.driver)!=-1: 
+                            self.listCameras.append(self.sCameradId)
                     else:
                         print(self.retval)
+                print("%d cameras verified with the driver: %s"%(len(self.listCameras),self.driver))
                 return self.listCameras
         else:
             print("No camera conected")
     
-    def open(self,Id,camHand):
-        self.camHandle=camHand
+    def open(self,Id):
         self.Id=Id
-        self.name=str(self.Id)[-12:]
+        self.camHandle=c_int()        
+        self.name=str(self.Id.value)[-12:-1]
+        self.retval=self.jaifactory.J_Camera_Open(self.hFactory,self.Id,byref(self.camHandle),0)
+        if self.retval==0:
+            print("Camera %s open success"%self.name)
+        
+    def close(self):
+        self.retval=self.jaifactory.J_Camera_Close(self.camHandle)
+        if self.retval==0:
+            print("Camera %s closed"%self.name)
+
+    def get_size(self):
+        self.camWidth=c_longlong()
+        self.camHeight=c_longlong()
+        #Get width from the camera
+        if self.jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("Width".encode('utf-8')),byref(self.camWidth))!=0:
+            print("Error getting width value from the camera %s"%self.name)
+        else:
+            print("Sensor (%s) Width = %d"%(self.name,self.camWidth.value))
+        #Get Height from the camera
+        if self.jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("Height".encode('utf-8')),byref(self.camHeight))!=0:
+            print("Error getting height value from the camera %s"%self.name)
+        else:
+            print("Sensor (%s) Height = %d"%(self.name,self.camHeight.value))
+        return self.camWidth,self.camHeight
+        
 myCam=Camera()
 cameras=myCam.update_camera_list("SD")
 
-print(list(cameras.keys())[1])
+myCam.open(cameras[0])
+print(myCam.get_size())
+time.sleep(1)
+myCam.close()
+
+
 
 
