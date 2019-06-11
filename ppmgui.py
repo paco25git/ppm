@@ -328,9 +328,9 @@ class dialog(QDialog):
 class App(QMainWindow):
     count=0
     colMap = pyqtSignal(str)
-    def __init__(self,cameras,Ndef,e):
+    def __init__(self,cameras,Ndef,eve):
         super(App,self).__init__()
-        self.e=e
+        self.eve=eve
         self.mdi = QMdiArea()
         self.setCentralWidget(self.mdi)
         self.title="Portable perfusion monitor"
@@ -457,7 +457,7 @@ class App(QMainWindow):
         
     def createHistogram(self):
         self.histFlag=True
-        self.e.set()
+        self.eve.set()
         """
         self.histSubW=histo()
         self.histSubW.createHistSubW()

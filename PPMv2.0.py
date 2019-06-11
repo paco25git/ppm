@@ -54,20 +54,20 @@ def detectCameras():
 class dataLSI(object):
     def __init__(self,start=np.zeros((1024,1280)).astype(np.uint8)):
         self.lock=threading.Lock()
-        self.value=start
-        
+        self.value=start       
 
-    def calc_hist(self,e):
+    
+
+    def calc_hist(self,eve):
+        self.eve=eve
         self.hist=cv2.calcHist([self.value],[0],None,[256],[0,256])
         plt.plot(self.hist,color='b')
         plt.xlim([0,256])
-        
-        if plt.fignum_exists("Figure 1"):
-            plt.draw()
-            plt.pause(0.0001)
-            plt.clf()
-        else:
-            e.clear()
+        plt.draw()
+        plt.pause(0.0001)
+        plt.clf()
+        #if not plt.fignum_exists("Figure 1"):
+         #   self.eve.clear()
         #plt.show()
 
 
@@ -75,17 +75,17 @@ def histogram_calc(img,threadname='Histo'):
     logging.info("Thread %s: starting", threadname)
     while True:
         logging.info("Thread %s: waiting", threadname)
-        e.wait()
-        while e.isSet():
-            logging.info("Thread %s: working", threadname)
-            img.calc_hist(e)
+        eve.wait()
+        while eve.isSet():
+            #logging.info("Thread %s: working", threadname)
+            img.calc_hist(eve)
             
     logging.info("Thread %s: finishing", threadname)
 
 def main(args): 
     try:
-        global e
-        e = threading.Event()
+        global eve
+        eve = threading.Event()
         format = "%(asctime)s: %(message)s"
         logging.basicConfig(format=format, level=logging.INFO,datefmt="%H:%M:%S")
 
@@ -106,7 +106,7 @@ def main(args):
         hisThread.start()
         #Create GUI
         app = ppmgui.QApplication(sys.argv)
-        ex = ppmgui.App(cameras,Ndef,e)
+        ex = ppmgui.App(cameras,Ndef,eve)
         ex.show()       
         welcome=ppmgui.dialog()
         welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
