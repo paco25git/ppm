@@ -15,6 +15,7 @@ import time
 import cv2
 import numpy as np
 from ctypes import *
+#import threading
 
 def do_processing(memory):
     imgs=[]
@@ -30,12 +31,13 @@ class live(QThread):
     livestream = pyqtSignal(QImage)
     liveproces = pyqtSignal(QImage)
     
-    def __init__(self,camera, mem):
+    def __init__(self,camera, mem, ppImg):
         super(live,self).__init__(parent=None)
         self.camera=camera
         self.mem=mem        
         self.colormap="jet"
-        
+        self.ppImg2=ppImg
+               
     def run(self):    
         while True:		
             self.n=1
@@ -53,24 +55,26 @@ class live(QThread):
                 if self.n>len(self.mem):
                     break
                     
-            newimg=do_processing(self.mem).reshape(1024,1280)
-            newimg*=3000 
-            #newimg+=60
-            newimg=newimg.astype(np.uint8)
+            self.ppImg=do_processing(self.mem).reshape(1024,1280)
+            self.ppImg*=3000 
+            #self.ppImg+=60
+            
+            self.ppImg2.value=self.ppImg.astype(np.uint8)
+            self.ppImg=self.ppImg.astype(np.uint8)
             
             if self.colormap=="jet":
-                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_JET)
+                self.ppImg=cv2.applyColorMap(self.ppImg, cv2.COLORMAP_JET)
                 
             if self.colormap=="hot":
-                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_HOT)
+                self.ppImg=cv2.applyColorMap(self.ppImg, cv2.COLORMAP_HOT)
                 
             if self.colormap=="aut":
-                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_AUTUMN)
+                self.ppImg=cv2.applyColorMap(self.ppImg, cv2.COLORMAP_AUTUMN)
                 
             if self.colormap=="bone":
-                newimg=cv2.applyColorMap(newimg, cv2.COLORMAP_BONE)
+                self.ppImg=cv2.applyColorMap(self.ppImg, cv2.COLORMAP_BONE)
                 
-            rgbImage2 = cv2.cvtColor(newimg, cv2.COLOR_BGR2RGB)
+            rgbImage2 = cv2.cvtColor(self.ppImg, cv2.COLOR_BGR2RGB)
             h2, w2, ch2 = rgbImage2.shape
             bytesPerLine2 = ch2 * w2
             convertToQtFormat = QtGui.QImage(rgbImage2.data, w2, h2, bytesPerLine2, QtGui.QImage.Format_RGB888)
@@ -324,8 +328,9 @@ class dialog(QDialog):
 class App(QMainWindow):
     count=0
     colMap = pyqtSignal(str)
-    def __init__(self,cameras,Ndef):
+    def __init__(self,cameras,Ndef,e):
         super(App,self).__init__()
+        self.e=e
         self.mdi = QMdiArea()
         self.setCentralWidget(self.mdi)
         self.title="Portable perfusion monitor"
@@ -452,10 +457,12 @@ class App(QMainWindow):
         
     def createHistogram(self):
         self.histFlag=True
+        self.e.set()
+        """
         self.histSubW=histo()
         self.histSubW.createHistSubW()
         self.histSubW.show()
-    
+        """
     def initUI(self):
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height) 
