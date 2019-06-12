@@ -93,7 +93,7 @@ def main(args):
         #open the Thorlabs camera dll file
         global thDLL
         thDLL=camdcx.load_library()
-        Ndef=5        
+        Ndef=20        
         cameras=detectCameras()
         #Open the first camera in the list (if Thorlabs connected will be the first one)
         if len(cameras)>=1:
@@ -106,7 +106,8 @@ def main(args):
         hisThread.start()
         #Create GUI
         app = ppmgui.QApplication(sys.argv)
-        ex = ppmgui.App(cameras,Ndef,eve)
+        screen = app.primaryScreen()       
+        ex = ppmgui.App(screen,cameras,Ndef,eve)
         ex.show()       
         welcome=ppmgui.dialog()
         welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)

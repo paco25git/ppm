@@ -55,9 +55,11 @@ class live(QThread):
                 if self.n>len(self.mem):
                     break
                     
-            self.ppImg=do_processing(self.mem).reshape(1024,1280)
-            self.ppImg*=3000 
-            #self.ppImg+=60
+            self.ppImg=do_processing(self.mem)
+            self.maxI=max(self.ppImg)
+            self.ppImg=self.ppImg.reshape(1024,1280)
+            self.ppImg/=self.maxI
+            self.ppImg*=255
             
             self.ppImg2.value=self.ppImg.astype(np.uint8)
             self.ppImg=self.ppImg.astype(np.uint8)
@@ -328,8 +330,16 @@ class dialog(QDialog):
 class App(QMainWindow):
     count=0
     colMap = pyqtSignal(str)
-    def __init__(self,cameras,Ndef,eve):
+    def __init__(self,screen,cameras,Ndef,eve):
         super(App,self).__init__()
+        #screen size
+        self.screen=screen
+        print('Screen: %s' % self.screen.name())
+        self.scrSize = self.screen.size()
+        print('Size: %d x %d' % (self.scrSize.width(), self.scrSize.height()))
+        self.scrAva = self.screen.availableGeometry()
+        print('Available: %d x %d' % (self.scrAva.width(), self.scrAva.height()))
+        self.camAspR=5/4
         self.eve=eve
         self.mdi = QMdiArea()
         self.setCentralWidget(self.mdi)
@@ -469,12 +479,15 @@ class App(QMainWindow):
         self.histFlag=False
         
         self.label = QLabel(self)
-        self.label.move(10, 120)
-        self.label.resize(1353, 1233)
+        self.label.move(0, 120)
+        #self.label.resize(1353, 1233)
+        self.label.resize(self.scrAva.width()/2, (self.scrAva.width()/2)*(1/self.camAspR))
         
         self.label2 = QLabel(self)
-        self.label2.move(1363,120)
-        self.label2.resize(1353,1233) 
+        #self.label2.move(1363,120)
+        self.label2.move(self.scrAva.width()/2+10,120)
+        #self.label2.resize(1353,1233) 
+        self.label2.resize(self.scrAva.width()/2, (self.scrAva.width()/2)*(1/self.camAspR)) 
                
         
         #----setting the menubar
