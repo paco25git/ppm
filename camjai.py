@@ -4,12 +4,17 @@
 
 #This is a library for handle the JAI camera: model AD-080GE
 
+#AD-080GE_#0 visible
+#AD-080GE_#1 infrared
+
 import os.path
 from ctypes import *
 import time
 import threading
 import cv2
 import numpy as np
+from PIL import Image
+import io
 
 jaifactory=None
 
@@ -83,9 +88,18 @@ class Camera(object):
             self.Id=None
             self.driver=None
             self.camHandle=None
-
+            self.pDS=None
+            #thread variables
+            self.can_run=threading.Event()
+            self.thing_done=threading.Event()
+            self.end_thread=threading.Event()
+            self.thing_done.set()
+            self.can_run.set()
+            self.end_thread.clear()
+            
+            
     def stream_thread(self,threadname='stream'):
-        print("event initied")
+        print("Stream Thread initied")
         self.iResult=None
         self.iSize=c_int()
         self.iQueued=c_ulonglong(0)
@@ -93,69 +107,86 @@ class Camera(object):
         self.m_hCondition=c_uint()
         self.iNumImages=c_ulonglong(0) #0 or 0xFFFFFFFFFFFFFFFF for continuous capture.
         self.hEvent=c_void_p()
+        """
         class EVENT_NEW_BUFFER_DATA(Structure):
             _fields_=[('BufferHandle',c_void_p),('pUserPointer',c_void_p)]
         #self.eventData=EVENT_NEW_BUFFER_DATA 
+        """
         self.eventData=c_void_p()
-        #self.iSize=c_uint(sizeof(EVENT_NEW_BUFFER_DATA))
-        #self.iSize=c_uint(sizeof(EVENT_NEW_BUFFER_DATA))
-           
+                   
         #Create condition
-        if jaifactory.J_Event_CreateCondition(byref(self.m_hCondition))==0:
-            print("Condition created")
+        if jaifactory.J_Event_CreateCondition(byref(self.m_hCondition))!=0:
+            print("Error creating condition")
+            
         #Register event
-        if jaifactory.J_DataStream_RegisterEvent(self.pDS,c_int(1),self.m_hCondition,byref(self.hEvent))==0: #EVENT_NEW_BUFFER=1 defined in GenTL.h
-            print("Event registered")
+        if jaifactory.J_DataStream_RegisterEvent(self.pDS,c_int(1),self.m_hCondition,byref(self.hEvent))!=0: #EVENT_NEW_BUFFER=1 defined in GenTL.h
+            print("Error registering event")
+            
         #Start image aquisition
         self.iAcquisitionFlag=c_uint(0x1) #ACQ_START_NEXT_IMAGE  = 0x1 defined in jai_factory.h
-        if jaifactory.J_DataStream_StartAcquisition(self.pDS,self.iAcquisitionFlag,self.iNumImages)==0:
-            print("Capturing images")
-            self.m_bStreamStarted = True
+        if jaifactory.J_DataStream_StartAcquisition(self.pDS,self.iAcquisitionFlag,self.iNumImages)!=0:
+            print("Error starting acquisition")
+            #self.m_bStreamStarted = True
         #Loop of stream processing
-        self.iTimeout=c_uint(1000)
+        self.iTimeout=c_uint(2000)
         while True:
-            #print("Waiting")
-            stat=jaifactory.J_Event_WaitForCondition(self.m_hCondition,self.iTimeout,byref(self.waitResult))
-            if stat==0:
-                #print("wait result = %d"%self.waitResult.value)
-                if self.waitResult.value==1: #(J_COND_WAIT_SIGNAL == WaitResult)  J_COND_WAIT_SIGNAL=1 <-defined on jai_factory.h
-                    #get the buffer handle from the event
-                    self.iSize=c_uint(sizeof(self.eventData))
-                    if jaifactory.J_Event_GetData(self.hEvent,byref(self.eventData),byref(self.iSize))==0:
-                        #print(self.eventData.BufferHandle)
-                        #print(self.eventData)
-                        #Getting the buffer ID
-                        self.infoValue=c_ulonglong(0)
+            self.can_run.wait() #Wait 
+            try:
+                self.thing_done.clear() #Flag for starting task
+                stat=jaifactory.J_Event_WaitForCondition(self.m_hCondition,self.iTimeout,byref(self.waitResult))
+                if stat==0:
+                    #print("wait result = %d"%self.waitResult.value)
+                    if self.waitResult.value==1: #(J_COND_WAIT_SIGNAL == WaitResult)  J_COND_WAIT_SIGNAL=1 <-defined on jai_factory.h
+                        #get the buffer handle from the event
                         self.iSize=c_uint(sizeof(self.eventData))
-                        if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(0), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_BASE=0 defined in GenTL.h
-                            print("Error getting pointer to the frame buffer")
-                            break
-                        #print(self.infoValue)
-                        ##Get data from the buffer
-                        arr=np.frombuffer(self.m_pAquBuffer[0], c_ubyte).reshape(768, 1024)
-                        cv2.imshow('image', cv2.resize(arr,None,fx=1,fy=1))
-                        cv2.waitKey(1)
+                        if jaifactory.J_Event_GetData(self.hEvent,byref(self.eventData),byref(self.iSize))==0:
+                            #print(self.eventData.BufferHandle)
+                            #print(self.eventData)
+                            #Getting the buffer ID
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(0), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_BASE=0 defined in GenTL.h
+                                print("Error getting pointer to the frame buffer")
+                                break
+                            #Get the effective data size.
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(1), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting effective data size")
+                                break
+                            print("Effective data size = %d"%self.infoValue.value)
+                            ##Get data from the buffer
+                            #arr=np.frombuffer(self.m_pAquBuffer[0], c_ubyte).reshape(768, 1024)
+                            arr=np.array(Image.open(io.BytesIO(self.m_pAquBuffer[0][0].value)))
+                            cv2.imshow('image', cv2.resize(arr,None,fx=1,fy=1))
+                            cv2.waitKey(1)
 
-                        if jaifactory.J_DataStream_QueueBuffer(self.pDS, self.eventData)!=0:
-                            print("Error queueing buffer")
+                            if jaifactory.J_DataStream_QueueBuffer(self.pDS, self.eventData)!=0:
+                                print("Error queueing buffer")
+                                break
+                        else:
+                            print("Error getting data from the event") 
                             break
-                    else:
-                        print("Error getting data from the event") 
+                    elif self.waitResult.value==0:
+                        print("waitResult: Timeout")
                         break
-                elif self.waitResult.value==0:
-                    print("waitResult: Timeout")
-                    break
-                elif self.waitResult.value==2:
-                    print("waitResult: Kill event")
-                    break
-                elif self.waitResult.value==-1:
-                    print("waitResult: error event")
-                    break
+                    elif self.waitResult.value==2:
+                        print("waitResult: Kill event")
+                        break
+                    elif self.waitResult.value==-1:
+                        print("waitResult: error event")
+                        break
+                    else:
+                        print("Unknown error")
+                        break
                 else:
-                    print("Unknown error")
                     break
-            else:
-                break
+                if self.end_thread.is_set():
+                    print("Thread stoped")
+                    break
+            finally:
+                self.thing_done.set() #Task done
+
         #Unregister new buffer event with acquisition engine
         jaifactory.J_DataStream_UnRegisterEvent(self.pDS, c_int(1))
         jaifactory.J_Event_CloseCondition(self.hEvent) 
@@ -163,7 +194,17 @@ class Camera(object):
         jaifactory.J_DataStream_StopAcquisition(self.pDS, c_int(1)) #ACQ_STOP_FLAG_KILL=1 defined in GenTL.h
         jaifactory.J_DataStream_Close(self.pDS)
 
-        
+    def pauseThread(self):
+        self.can_run.clear()
+        print("Camera stream thread paused")
+        self.thing_done.wait()
+
+    def resumeThread(self):
+        print("Camera stream thread resumed")
+        self.can_run.set()
+
+    def stopThread(self):
+        self.end_thread.set()
 
     def open(self,Id):
         self.Id=c_char_p(Id)
@@ -193,6 +234,66 @@ class Camera(object):
             print("Sensor (%s) Height = %d"%(self.name,self.camHeight.value))
         return self.camWidth,self.camHeight
 
+    def list_nodes(self):
+        self.nFeatureNodes=c_longlong()
+        self.hNode=c_void_p()
+        self.sNodeName=(c_char*256)(0)
+        self.sSubNodeName=(c_char*256)(0)
+        self.size=c_uint()
+        if jaifactory.J_Camera_GetNumOfSubFeatures(self.camHandle,c_char_p("Root".encode('utf-8')),byref(self.nFeatureNodes))!=0:
+            print("Error getting nodes from the camera %s"%self.name)
+            return False
+        else:
+            for i in range(self.nFeatureNodes.value):
+                if jaifactory.J_Camera_GetSubFeatureByIndex(self.camHandle,c_char_p("Root".encode('utf-8')),c_uint(i),byref(self.hNode))!=0:
+                    print("Error getting nodes from the camera %s"%self.name)
+                    return False
+                else:
+                    self.size=c_uint(sizeof(self.sNodeName))
+                    if jaifactory.J_Node_GetName(self.hNode,byref(self.sNodeName),byref(self.size),c_uint(0))!=0:
+                        print("Error getting node name from the camera %s"%self.name)
+                        return False
+                    else:
+                        print("Node %d name: %s"%(i,str(self.sNodeName.value)))
+                        self.nodeType=c_uint()
+                        if jaifactory.J_Node_GetType(self.hNode,byref(self.nodeType))!=0:
+                            print("Error getting node type from the camera %s"%self.name)
+                            return False
+                        else:
+                            if self.nodeType.value==101: #J_ICategory=101 defined in jai_factory.h
+                                self.nSubFeaturesNodes=c_uint()
+                                if jaifactory.J_Camera_GetNumOfSubFeatures(self.camHandle,self.sNodeName,byref(self.nSubFeaturesNodes))!=0:
+                                    print("Error getting subnode number from the camera %s"%self.name)
+                                else:
+                                    if self.nSubFeaturesNodes.value>0:
+                                        print("%d subFeature node were found"%self.nSubFeaturesNodes.value)
+                                        for j in range(self.nSubFeaturesNodes.value):
+                                            self.hSubNode=c_void_p()
+                                            if jaifactory.J_Camera_GetSubFeatureByIndex(self.camHandle,self.sNodeName,c_uint(j),byref(self.hSubNode))!=0:
+                                                print("Error getting subnode name from the camera %s"%self.name)
+                                                return False
+                                            else:
+                                                self.size=c_uint(sizeof(self.sSubNodeName))
+                                                if jaifactory.J_Node_GetName(self.hSubNode,self.sSubNodeName,byref(self.size),c_uint(0))!=0:
+                                                    print("Error getting node name from the camera %s"%self.name)
+                                                    return False
+                                                if jaifactory.J_Node_GetType(self.hSubNode,byref(self.nodeType))!=0:
+                                                    print("Error getting node type from the camera %s"%self.name)
+                                                    return False
+                                                else:
+                                                    print("    Node %d.%d name: %s, type: %d"%(i,j,str(self.sSubNodeName.value),self.nodeType.value))
+        
+    def get_pixel_format(self):
+        self.pixelFormat=c_longlong()
+        if jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("PixelFormat".encode('utf-8')),byref(self.pixelFormat))!=0:
+            print("Error getting pixel format value from the camera %s"%self.name)
+            return False
+        else:
+            print("Pixel Format = %d"%self.pixelFormat.value)
+            return self.pixelFormat.value
+        #35127316=24 Bit RGB Color
+        #17301505=8 Bit Monochrome
+
     def prepare_buffers(self,bufferCount=1, bufferSize=1024*768, pPrivateData=c_void_p()):
         self.pPrivateData=pPrivateData
         self.m_iValidBuffers=0
@@ -207,7 +308,7 @@ class Camera(object):
             if jaifactory.J_Camera_CreateDataStream(self.camHandle,c_uint(0), byref(self.pDS))==0:
                 
                 for i in range(bufferCount):
-                    self.m_pAquBuffer.append((c_ubyte*bufferSize)())
+                    self.m_pAquBuffer.append((c_ubyte*bufferSize*3)())
                     self.m_pAquBufferID.append(c_void_p())
                     print("Creating buffer %d = %s"%(i,self.m_pAquBuffer[i]))
                     #Announce the buffer pointer to the Acquisition engine
@@ -252,13 +353,15 @@ class Camera(object):
             #Remove the frame buffer from the Acquisition engine.
             print(jaifactory.J_DataStream_RevokeBuffer(self.pDS,self.m_pAquBufferID[i],byref(self.m_pAquBuffer[i]),byref(self.pPrivateData)))
 
+
 load_library()        
 cameras=update_camera_list("FD")
 myCam=Camera()
 
 myCam.open(cameras[1])
-#print(myCam.get_size())
-
+print(myCam.get_size())
+#myCam.list_nodes()
+myCam.get_pixel_format()
 #Data stream manual acquisition
 
 #......1......
@@ -271,8 +374,13 @@ print(myCam.prepare_buffers())
 myCam.start_aquisition()
 threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
 threadStream.start()
-time.sleep(2)
-#myCam.stream_thread()
+time.sleep(6)
+#myCam.pauseThread()
+#time.sleep(3)
+#myCam.resumeThread()
+#time.sleep(5)
+
+myCam.stopThread()
 myCam.stop_aquisition()
 time.sleep(1)
 myCam.close()

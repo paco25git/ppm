@@ -17,11 +17,13 @@ class Hilo(threading.Thread):
         self.daemon=True
 
     def run(self):
+        print("First things")
         while True:
             self.can_run.wait()
             try:
                 self.thing_done.clear()
                 print("working")
+                time.sleep(0.5)
             finally:
                 self.thing_done.set()
     
@@ -45,3 +47,4 @@ print("thread paused")
 time.sleep(2)
 print("resuming")
 thr.resume()
+time.sleep(2)
