@@ -93,7 +93,7 @@ def main(args):
         #open the Thorlabs camera dll file
         global thDLL
         thDLL=camdcx.load_library()
-        Ndef=20        
+        Ndef=5        
         cameras=detectCameras()
         #Open the first camera in the list (if Thorlabs connected will be the first one)
         if len(cameras)>=1:

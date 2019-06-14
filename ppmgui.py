@@ -7,10 +7,11 @@
 #---------importing libraries
 import sys
 from PyQt5 import QtCore, QtWidgets, QtGui
-from PyQt5.QtWidgets import (QMainWindow, QApplication, QAction, QLabel, QGridLayout, QGroupBox, QSpinBox,QStyle,QStackedWidget,
+from PyQt5.QtWidgets import (QMainWindow, QApplication, QAction, QLabel, 
+ QGridLayout, QGroupBox, QSpinBox,QStyle,QStackedWidget,
  QWidget, QVBoxLayout,QHBoxLayout, QSlider, QDialog, QPushButton, QMdiSubWindow, QTextEdit,QMdiArea,QBoxLayout,QComboBox)
-from PyQt5.QtGui import QImage, QPixmap, QFont
-from PyQt5.QtCore import QSize, QThread, pyqtSignal, pyqtSlot, Qt
+from PyQt5.QtGui import QImage, QPixmap, QFont, QPainter, QPen
+from PyQt5.QtCore import QSize, QThread, pyqtSignal, pyqtSlot, Qt, QPoint
 import time
 import cv2
 import numpy as np
@@ -353,8 +354,26 @@ class App(QMainWindow):
         self.Ndef=Ndef
         self.colorMaps=["jet","hot","aut","bone"]
         self.colorMap=self.colorMaps[0]
+
+        #Painting red line section
+        self.drawing = False
+        self.firstPoint = QPoint()
+        self.lastPoint = QPoint()
+        #self.image = QPixmap("myimg.jpg")
+        self.setGeometry(100, 100, 500, 300)
+        #self.label = QLabel(self)
+        #self.label.resize(500, 40)
+        #self.resize(self.image.width(), self.image.height())
+        self.setMouseTracking(True)
+
         self.initUI()
-        
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            print(event.pos())
+            self.drawing = True
+            self.firstPoint = event.pos()
+
     def keyPressEvent(self, e):  
         if e.key() == QtCore.Qt.Key_Escape:
             print("escape")
