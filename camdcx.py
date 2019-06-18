@@ -8,6 +8,7 @@ import os.path
 from ctypes import *
 import numpy as np
 import win32event
+import threading
 
 uc480=None
 
