@@ -99,8 +99,8 @@ class Camera(object):
             self.end_thread.clear()
             
             
-    def stream_thread(self,threadname='stream'):
-        print("Stream Thread initied")
+    def stream_thread(self,threadname='JAI_Stream'):
+        print("JAI Stream Thread initied")
         self.iResult=None
         self.iSize=c_int()
         self.iQueued=c_ulonglong(0)
@@ -349,6 +349,10 @@ class Camera(object):
         jaifactory.J_DataStream_StopAcquisition(self.pDS, c_int(1)) #ACQ_STOP_FLAG_KILL=1 defined in GenTL.h
         jaifactory.J_DataStream_Close(self.pDS)
 
+    def start_Thread(self):
+        self.threadStream = threading.Thread(target=self.stream_thread, args=(" ",), daemon=True)
+        self.threadStream.start()
+
     def pauseThread(self):
         self.can_run.clear()
         print("Camera stream thread paused")
@@ -555,8 +559,11 @@ myCam.prepare_buffers()
 #myCam.list_nodes()
 
 myCam.start_aquisition()
-threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
-threadStream.start()
+
+myCam.start_Thread()
+#threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
+#threadStream.start()
+
 time.sleep(15)
 #myCam.pauseThread()
 #time.sleep(3)

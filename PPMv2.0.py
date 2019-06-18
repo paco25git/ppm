@@ -97,9 +97,9 @@ def main(args):
         if len(cameras)>=1:
             if cameras[0].camType=='ThorlabsCam':
                 cameras[0].open()
-                mem=camdcx.create_sequence(cameras[0],Ndef)
+                mem=cameras[0].create_sequence(Ndef)
                 handleEvent=cameras[0].init_event()
-                print(cameras[0].enable_event())
+                cameras[0].enable_event()
             elif cameras[0].camType=='JaiCam':
                 pass
         #Create histogram thread

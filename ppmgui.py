@@ -41,16 +41,21 @@ class live(QThread):
         self.ppImg2=ppImg
         self.handleEvent=hEvent
     def run(self):    
+        self.camera.start_continuous_capture()
         while True:		
             self.n=1
             while True:
-                self.camera.freeze_video()
+                #self.camera.freeze_video()
                 #time.sleep(.1)
                 self.waitEvent=win32event.WaitForSingleObject(self.handleEvent,1000)
+                self.ID=self.camera.get_active_image_mem()-1
+                if self.ID==0:
+                    self.ID=self.camera.NBuff                
                 if self.waitEvent==win32event.WAIT_TIMEOUT:
                     print("Timed out")
                 elif self.waitEvent==win32event.WAIT_OBJECT_0:
-                    arr=self.camera.get_image_v2(self.mem[self.n-1][0])
+                    arr=self.camera.get_image_v2(self.camera.memID.get(self.ID))
+                    print(self.ID)
                     self.n+=1
                 rgbImage = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
                 h, w,ch= rgbImage.shape

@@ -54,13 +54,7 @@ def list_cameras_connected():
         print("error finding cameras")
         raise CameraOpenError(" ")
         
-def create_sequence(cam,N=5):
-        mem=[]
-        cam.set_external_trigger()
-        for i in range(N):
-            mem.append(cam.initialize_memory())
-            cam.add_to_sequence(mem[i][0],mem[i][1])
-        return mem
+
 
 class CameraOpenError(Exception):
 	def __init__(self, mesg):
@@ -83,6 +77,48 @@ class Camera(object):
             self.exposure = None
             self.roi_pos = None
             self.framerate = None
+            self.NBuff=None
+            #thread variables
+            self.can_run=threading.Event()
+            self.thing_done=threading.Event()
+            self.end_thread=threading.Event()
+            self.thing_done.set()
+            self.can_run.set()
+            self.end_thread.clear()
+
+    def stream_thread(self,threadname='Thorlabs_Stream'):
+        print("Thorlabs Stream Thread initied")
+        self.frame=0
+        while True:
+            self.can_run.wait() #Wait
+            try:
+                self.waitEvent=win32event.WaitForSingleObject(self.handleEvent,1000)
+                if self.waitEvent==win32event.WAIT_TIMEOUT:
+                    print("Timed out")
+                elif self.waitEvent==win32event.WAIT_OBJECT_0:
+                    print("Frame")
+                    arr=self.get_image_v2(self.mem[self.n-1][0])
+                    self.frame+=1
+                    if self.frame>=self.NBuff:
+                        self.frame=0
+                        print("Mem full")
+                if self.end_thread.is_set():
+                    print("Thread stoped")
+                    break
+            finally:
+                self.thing_done.set() #Task done
+
+    def pauseThread(self):
+        self.can_run.clear()
+        print("Camera stream thread paused")
+        self.thing_done.wait()
+
+    def resumeThread(self):
+        print("Camera stream thread resumed")
+        self.can_run.set()
+
+    def stopThread(self):
+        self.end_thread.set()
 
     def open(self, bit_depth=8, roi_shape=(1280, 1024), roi_pos=(0,0), name="Thorlabs", exposure = 10, framerate = 10.0):
         self.bit_depth = bit_depth
@@ -122,6 +158,17 @@ class Camera(object):
         else:
             return
 
+    def create_sequence(self,N=5):
+        self.memID={}
+        self.mem=[]
+        self.NBuff=N
+        #self.set_external_trigger()
+        for i in range(self.NBuff):
+            self.mem.append(self.initialize_memory())
+            self.add_to_sequence(self.mem[i][0],self.mem[i][1])
+            self.memID[self.mem[i][1].value]=self.mem[i][0]
+        print(self.memID)
+        return self.mem
 	
     def get_image(self, buffer_number=None):
         #buffer number not yet used
