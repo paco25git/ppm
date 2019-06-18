@@ -84,6 +84,7 @@ class Camera(object):
         if jaifactory==None:
             raise CameraOpenError("Jai_Factory.dll file not open, use load_library() method")
         else:
+            self.camType="JaiCam"
             self.name=None
             self.Id=None
             self.driver=None
@@ -107,13 +108,25 @@ class Camera(object):
         self.m_hCondition=c_uint()
         self.iNumImages=c_ulonglong(0) #0 or 0xFFFFFFFFFFFFFFFF for continuous capture.
         self.hEvent=c_void_p()
+        self.g_hView=c_void_p()
+        self.chunkLayoutIDValue=c_ulonglong(0)
+        self.lastChunkLayoutID=c_ulonglong(0)
+        self.iNumChunks=c_size_t(0)
+        self.iLastNumChunks=c_size_t(0)
+        
+        class J_SINGLE_CHUNK_DATA(Structure):
+            _fields_=[('ChunkID',c_ulonglong),('ChunkOffset',c_longlong),('ChunkLength',c_size_t)]
+        self.pChunkInfoArray=J_SINGLE_CHUNK_DATA()
         """
         class EVENT_NEW_BUFFER_DATA(Structure):
             _fields_=[('BufferHandle',c_void_p),('pUserPointer',c_void_p)]
         #self.eventData=EVENT_NEW_BUFFER_DATA 
         """
+        class J_tIMAGE_INFO(Structure):
+            _fileds_=[('iPixelType',c_ulonglong),('iSizeX',c_uint),('iSizeY',c_uint),('iImageSize',c_uint),('pImageBuffer',POINTER(c_uint8),('iTimeStamp',c_ulonglong),('iMissingPackets',c_uint),('iAnnouncedBuffers',c_uint),('iQueuedBuffers',c_uint),('iOffsetX',c_uint),('iOffsetY',c_uint),('iAwaitDelivery',c_uint),('iBlockId',c_uint),('iPaddingX',c_uint),('iImageStatus',c_uint))]
         self.eventData=c_void_p()
-                   
+        self.tAqImageInfo=J_tIMAGE_INFO()
+        self.tAqImageInfo.iImageStatus=c_uint(0) #IMAGE_STATUS_NONE = 0 defined in jai_factory.h
         #Create condition
         if jaifactory.J_Event_CreateCondition(byref(self.m_hCondition))!=0:
             print("Error creating condition")
@@ -128,7 +141,14 @@ class Camera(object):
             print("Error starting acquisition")
             #self.m_bStreamStarted = True
         #Loop of stream processing
-        self.iTimeout=c_uint(2000)
+        self.iTimeout=c_uint(5000)
+        self.nFrames=0
+        #create window
+        self.sizeW=(c_uint*2)(100,100)
+        self.pointW=(c_uint*2)(0,0)
+        
+        #self.hWin=c_void_p()
+        #jaifactory.J_Image_OpenViewWindow(c_char_p("LIVE".encode('utf-8')),byref(self.pointW),byref(self.sizeW),byref(self.g_hView))
         while True:
             self.can_run.wait() #Wait 
             try:
@@ -137,36 +157,170 @@ class Camera(object):
                 if stat==0:
                     #print("wait result = %d"%self.waitResult.value)
                     if self.waitResult.value==1: #(J_COND_WAIT_SIGNAL == WaitResult)  J_COND_WAIT_SIGNAL=1 <-defined on jai_factory.h
+                        self.nFrames+=1
+                        
                         #get the buffer handle from the event
                         self.iSize=c_uint(sizeof(self.eventData))
                         if jaifactory.J_Event_GetData(self.hEvent,byref(self.eventData),byref(self.iSize))==0:
                             #print(self.eventData.BufferHandle)
-                            #print(self.eventData)
                             #Getting the buffer ID
+                            
+                            self.tAqImageInfo.iImageStatus=c_uint(1) #IMAGE_STATUS_EMPTY = 1 defined in jai_factory.h
+                            
                             self.infoValue=c_ulonglong(0)
                             self.iSize=c_uint(sizeof(self.eventData))
                             if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(0), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_BASE=0 defined in GenTL.h
                                 print("Error getting pointer to the frame buffer")
                                 break
+                            """
+                            self.tAqImageInfo.pImageBuffer=POINTER(c_uint8)(self.infoValue)
+                            
                             #Get the effective data size.
                             self.infoValue=c_ulonglong(0)
                             self.iSize=c_uint(sizeof(self.eventData))
                             if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(1), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
                                 print("Error getting effective data size")
                                 break
-                            print("Effective data size = %d"%self.infoValue.value)
-                            ##Get data from the buffer
-                            #arr=np.frombuffer(self.m_pAquBuffer[0], c_ubyte).reshape(768, 1024)
-                            arr=np.array(Image.open(io.BytesIO(self.m_pAquBuffer[0][0].value)))
-                            cv2.imshow('image', cv2.resize(arr,None,fx=1,fy=1))
-                            cv2.waitKey(1)
+                            self.tAqImageInfo.iImageSize=c_uint(self.infoValue.value)
+                            #Get frame width
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(10), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting frame width")
+                                break
+                            self.tAqImageInfo.iSizeX=c_uint(self.infoValue.value)
+                            #Get frame height
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(11), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting frame height")
+                                break
+                            self.tAqImageInfo.iSizeY=c_uint(self.infoValue.value)
+                            
+                            #Get Pixel format type
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(20), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting pixel type")
+                                break
+                            self.tAqImageInfo.iPixelType=c_ulonglong(self.infoValue.value)
+                            #print(self.infoValue)
+                            
+                            #Get timestamp
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(3), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting time stamp")
+                                break
+                            self.tAqImageInfo.iTimeStamp=c_ulonglong(self.infoValue.value)
+                            #Get missing packages in frame
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(4), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting packages in frame")
+                                break
+                            self.tAqImageInfo.iMissingPackets=c_uint(self.infoValue.value)
+                            #Initialize number of valid buffers announced
+                            self.tAqImageInfo.iAnnouncedBuffers=self.m_iValidBuffers
+                            #Get # of buffers quered
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetStreamInfo(self.pDS, c_uint(4), byref(self.iQueued), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting # of buffers quered")
+                                break
+                            self.tAqImageInfo.iQueuedBuffers=c_uint(self.infoValue.value)
+                            #Get x offset
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(12), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting x offset")
+                                break
+                            self.tAqImageInfo.iOffsetX=c_uint(self.infoValue.value)
+                            #Get y offset
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(13), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting y offset")
+                                break
+                            self.tAqImageInfo.iOffsetY=c_uint(self.infoValue.value)
+                            #Get x padding
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(14), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting x padding")
+                                break
+                            self.tAqImageInfo.iPaddingX=c_uint(self.infoValue.value)
+                            #Get block id
+                            self.infoValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.eventData))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(16), byref(self.infoValue), byref(self.iSize))!=0: #BUFFER_INFO_SIZE=1 defined in GenTL.h
+                                print("Error getting block id")
+                                break
+                            self.tAqImageInfo.iBlockId=c_uint(self.infoValue.value)
 
+                            self.tAqImageInfo.iImageStatus=2
+
+                            #Get chunk layout ID
+                            self.chunkLayoutIDValue=c_ulonglong(0)
+                            self.iSize=c_uint(sizeof(self.chunkLayoutIDValue))
+                            if jaifactory.J_DataStream_GetBufferInfo(self.pDS, self.eventData, c_uint(24), pointer(self.chunkLayoutIDValue), byref(self.iSize))!=0:
+                                print("Error getting chunk layout ID")
+                                break
+                            else:   
+                                print(self.chunkLayoutIDValue)
+                                if self.chunkLayoutIDValue!=self.lastChunkLayoutID:
+                                    self.lastChunkLayoutID=self.chunkLayoutIDValue
+                                    self.iNumChunks=c_size_t(0)
+                                    #self.pChunkInfoArray=None
+                                    sata=jaifactory.J_DataStream_GetBufferChunkData(self.pDS, self.eventData, byref(self.pChunkInfoArray) , byref(self.iNumChunks))
+                                    if sata==0:
+                                        print("Error getting the current number of chunks")     
+                                        print(sata)
+                                        break
+                                    else:
+                                        #Did the number of chunks change? 
+                                        # Then we would have to re-allocate the Chunk Info structure
+                                        print(self.iNumChunks)
+                                        #print(self.iLastNumChunks)
+                                        if self.iNumChunks.value!=self.iLastNumChunks.value:
+                                            self.iLastNumChunks=self.iNumChunks
+                                            #self.pChunkInfoArray=POINTER(J_SINGLE_CHUNK_DATA(self.iNumChunks.value*sizeof(J_SINGLE_CHUNK_DATA)))
+                                        if jaifactory.J_DataStream_GetBufferChunkData(self.pDS, self.eventData, self.pChunkInfoArray, byref(self.iNumChunks))!=0:
+                                            print("ERRRor")
+                                            break
+                                        else:
+                                            if jaifactory.J_Camera_AttachChunkData(self.camHandle, self.tAqImageInfo.pImageBuffer, self.pChunkInfoArray, self.iNumChunks)!=0:
+                                                print("Other error")
+                                                break
+                                else:
+                                    if jaifactory.J_Camera_UpdateChunkData(self.camHandle, byref(self.tAqImageInfo.pImageBuffer))!=0:
+                                        print("Errrrror")
+                                        break
+                            #print("Effective data size = %d"%self.infoValue.value)
+                            """
+
+                            ##Get data from the buffer
+                            if self.pixelFormat.value==35127316:
+                                bgr=np.frombuffer(self.Buffers.get(self.eventData.value), np.uint8).reshape(768,1024,3)
+                                cv2.imshow('image',cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+                                cv2.waitKey(1)
+                            elif self.pixelFormat.value==17301505:
+                                gray=np.frombuffer(self.Buffers.get(self.eventData.value), np.uint8).reshape(768,1024)
+                                cv2.imshow('image',gray)
+                                cv2.waitKey(1)
+                            else:
+                                pass
+                            
+                            #myCam.get_frame_rate()
+                            #self.tAqImageInfo.iImageStatus=c_uint(1)
+                            
                             if jaifactory.J_DataStream_QueueBuffer(self.pDS, self.eventData)!=0:
                                 print("Error queueing buffer")
                                 break
                         else:
                             print("Error getting data from the event") 
                             break
+                        
                     elif self.waitResult.value==0:
                         print("waitResult: Timeout")
                         break
@@ -188,6 +342,7 @@ class Camera(object):
                 self.thing_done.set() #Task done
 
         #Unregister new buffer event with acquisition engine
+        print("%d frames were acquired"%self.nFrames)
         jaifactory.J_DataStream_UnRegisterEvent(self.pDS, c_int(1))
         jaifactory.J_Event_CloseCondition(self.hEvent) 
         jaifactory.J_Event_ExitCondition(self.m_hCondition) 
@@ -294,13 +449,38 @@ class Camera(object):
         #35127316=24 Bit RGB Color
         #17301505=8 Bit Monochrome
 
-    def prepare_buffers(self,bufferCount=1, bufferSize=1024*768, pPrivateData=c_void_p()):
+    def get_frame_rate(self):
+        self.frameRate=c_longlong()
+        if jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("JAIAcquisitionFrameRate".encode('utf-8')),byref(self.frameRate))!=0:
+            print("Error getting frame rate value from the camera %s"%self.name)
+            return False
+        else:
+            print("Frame rate = %d"%self.frameRate.value)
+            return self.frameRate.value
+
+    def prepare_buffers(self,bufferCount=5, Size=(1024,768), pPrivateData=c_void_p()):
         self.pPrivateData=pPrivateData
         self.m_iValidBuffers=0
         self.m_pAquBuffer=[]
         self.m_pAquBufferID=[]
         self.pNum=c_uint()
         self.pDS=c_void_p()
+        self.Buffers={}
+        #Get pixelformat
+        self.pixelFormat=c_longlong()
+        if jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("PixelFormat".encode('utf-8')),byref(self.pixelFormat))!=0:
+            print("Error getting pixel format value from the camera %s"%self.name)
+            
+        if self.pixelFormat.value==35127316:
+            chan=3
+        elif self.pixelFormat.value==17301505:
+            chan=1
+        else:
+            chan=1
+        #35127316=24 Bit RGB Color
+        #17301505=8 Bit Monochrome
+        bufferSize=Size[0]*Size[1]*chan
+        
         #Get number of data streams
         if jaifactory.J_Camera_GetNumOfDataStreams(self.camHandle,byref(self.pNum))==0:
             print(self.pNum)
@@ -308,7 +488,7 @@ class Camera(object):
             if jaifactory.J_Camera_CreateDataStream(self.camHandle,c_uint(0), byref(self.pDS))==0:
                 
                 for i in range(bufferCount):
-                    self.m_pAquBuffer.append((c_ubyte*bufferSize*3)())
+                    self.m_pAquBuffer.append((c_ubyte*bufferSize)())
                     self.m_pAquBufferID.append(c_void_p())
                     print("Creating buffer %d = %s"%(i,self.m_pAquBuffer[i]))
                     #Announce the buffer pointer to the Acquisition engine
@@ -322,10 +502,11 @@ class Camera(object):
                         break
                     else:
                         print("Sucessfully queued")
+                    self.Buffers[self.m_pAquBufferID[i].value]=self.m_pAquBuffer[i]
                     self.m_iValidBuffers+=1
             else:
                 print("Error Creating stream data")        
-        return self.m_iValidBuffers
+        return self.Buffers
 
     def start_aquisition(self):
         self.sNodeName=c_char_p("AcquisitionStart".encode('utf-8'))
@@ -358,23 +539,25 @@ load_library()
 cameras=update_camera_list("FD")
 myCam=Camera()
 
-myCam.open(cameras[1])
+myCam.open(cameras[0])
 print(myCam.get_size())
 #myCam.list_nodes()
-myCam.get_pixel_format()
+
 #Data stream manual acquisition
 
 #......1......
 #Allocate memeroy buffers
-print(myCam.prepare_buffers())
+myCam.prepare_buffers()
 #myCam.unprepare_buffers()
 #......2......
 #Create condition and registed event
 #m_hStreamEvent = CreateEvent(NULL, true, false, NULL)
+#myCam.list_nodes()
+
 myCam.start_aquisition()
 threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
 threadStream.start()
-time.sleep(6)
+time.sleep(15)
 #myCam.pauseThread()
 #time.sleep(3)
 #myCam.resumeThread()
@@ -382,7 +565,8 @@ time.sleep(6)
 
 myCam.stopThread()
 myCam.stop_aquisition()
-time.sleep(1)
+time.sleep(2)
+
 myCam.close()
 
 

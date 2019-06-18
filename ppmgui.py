@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 from ctypes import *
 #import threading
+import win32event
 
 def do_processing(memory):
     imgs=[]
@@ -32,21 +33,25 @@ class live(QThread):
     livestream = pyqtSignal(QImage)
     liveproces = pyqtSignal(QImage)
     
-    def __init__(self,camera, mem, ppImg):
+    def __init__(self,camera, mem, ppImg, hEvent):
         super(live,self).__init__(parent=None)
         self.camera=camera
         self.mem=mem        
         self.colormap="jet"
         self.ppImg2=ppImg
-               
+        self.handleEvent=hEvent
     def run(self):    
         while True:		
             self.n=1
             while True:
                 self.camera.freeze_video()
-                time.sleep(.1)
-                arr=self.camera.get_image_v2(self.mem[self.n-1][0])
-                self.n+=1
+                #time.sleep(.1)
+                self.waitEvent=win32event.WaitForSingleObject(self.handleEvent,1000)
+                if self.waitEvent==win32event.WAIT_TIMEOUT:
+                    print("Timed out")
+                elif self.waitEvent==win32event.WAIT_OBJECT_0:
+                    arr=self.camera.get_image_v2(self.mem[self.n-1][0])
+                    self.n+=1
                 rgbImage = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
                 h, w,ch= rgbImage.shape
                 bytesPerLine = ch * w
@@ -522,8 +527,8 @@ class App(QMainWindow):
         fileMenu.addAction(exitAct)
         
         #EDIT-----
-        editMenu = mainMenu.addMenu('Edit')
-        selCam=editMenu.addMenu("Select camera")
+        self.editMenu = mainMenu.addMenu('Edit')
+        self.selCam=self.editMenu.addMenu("Select camera")
         
         self.fBond=QtGui.QFont()
         self.fBond.setBold(True)
@@ -534,13 +539,13 @@ class App(QMainWindow):
         for i in self.cameras:
             exec('self.cam{}Act=QAction("Camera {}",self)'.format(i.name,i.name))
             exec('self.cam{}Act.triggered.connect(self.selectedCamera{})'.format(i.name,i.name))
-            exec('selCam.addAction(self.cam{}Act)'.format(i.name))
+            exec('self.selCam.addAction(self.cam{}Act)'.format(i.name))
         exec('self.cam{}Act.setFont(self.fBond)'.format(self.cameras[0].name))
                 
         mcAct=QAction("Manage Camera",self)
         mcAct.triggered.connect(self.createASubwindow)
         mcAct.setShortcut("Ctrl+M")             
-        editMenu.addAction(mcAct)        
+        self.editMenu.addAction(mcAct)        
         
         #VIEW-----
         viewMenu = mainMenu.addMenu('View')

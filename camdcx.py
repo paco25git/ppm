@@ -7,6 +7,7 @@
 import os.path
 from ctypes import *
 import numpy as np
+import win32event
 
 uc480=None
 
@@ -274,22 +275,21 @@ class Camera(object):
         return fr
 		
     def freeze_video(self):
-        res=uc480.is_FreezeVideo(self.handle,0)
+        res=uc480.is_FreezeVideo(self.handle,0) #IS_DONT_WAIT=0x0000  IS_WAIT=1 defined in uc480.h
         return res
     def set_external_trigger(self):
         uc480.is_SetExternalTrigger(self.handle,0x0008)
+
+    def enable_event(self):
+        s= uc480.is_EnableEvent(self.handle,self.which)
+        return s
 		
-    def init_image_queue(self):
-        uc480.is_InitImageQueue(self.handle,0)
+    def init_event(self, which=2):
+        self.which=c_int(which)
+        self.handleEvent=win32event.CreateEvent(None,False,False,None)
+        s=uc480.is_InitEvent(self.handle, c_int(self.handleEvent), self.which)
+        return self.handleEvent
         
-    def init_event(self,handleEvent, which):
-        self.handleEvent=c_int(handleEvent)
-        s=uc480.is_InitEvent(self.handle, self.handleEvent, which)
-        return s
-        
-    def enable_event(self, which):
-        s= uc480.is_EnableEvent(self.handle,which)
-        return s
         
         
         

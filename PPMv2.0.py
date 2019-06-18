@@ -56,8 +56,6 @@ class dataLSI(object):
         self.lock=threading.Lock()
         self.value=start       
 
-    
-
     def calc_hist(self,eve):
         self.eve=eve
         self.hist=cv2.calcHist([self.value],[0],None,[256],[0,256])
@@ -100,6 +98,10 @@ def main(args):
             if cameras[0].camType=='ThorlabsCam':
                 cameras[0].open()
                 mem=camdcx.create_sequence(cameras[0],Ndef)
+                handleEvent=cameras[0].init_event()
+                print(cameras[0].enable_event())
+            elif cameras[0].camType=='JaiCam':
+                pass
         #Create histogram thread
         img=dataLSI()
         hisThread = threading.Thread(target=histogram_calc, args=(img,), daemon=True)
@@ -112,7 +114,7 @@ def main(args):
         welcome=ppmgui.dialog()
         welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
         #Place captured image
-        live=ppmgui.live(cameras[0],mem,img)
+        live=ppmgui.live(cameras[0],mem,img,handleEvent)
         live.livestream.connect(ex.setImage)
         live.liveproces.connect(ex.setImage2)
         ex.colMap.connect(live.changeColorMap)
