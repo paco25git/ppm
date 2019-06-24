@@ -8,7 +8,7 @@
 import sys
 from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtWidgets import (QMainWindow, QApplication, QAction, QLabel, 
- QGridLayout, QGroupBox, QSpinBox,QStyle,QStackedWidget,
+ QGridLayout, QGroupBox, QSpinBox,QDoubleSpinBox,QStyle,QStackedWidget,
  QWidget, QVBoxLayout,QHBoxLayout, QSlider, QDialog, QPushButton, QMdiSubWindow, QTextEdit,QMdiArea,QBoxLayout,QComboBox)
 from PyQt5.QtGui import QImage, QPixmap, QFont, QPainter, QPen
 from PyQt5.QtCore import QSize, QThread, pyqtSignal, pyqtSlot, Qt, QPoint
@@ -186,12 +186,15 @@ class subwindow(QWidget):
             self.current.set_exposure(self.exp)
         return self.exp
         
-    def createLSIProcessingOptions(self,Ndef,current):
+    def changeWSize(self):
+        self.lsiThr.change_window(self.wsVal.value())
+
+    def createLSIProcessingOptions(self,Ndef,current,lsiThr):
         self.current=current
         self.setWindowTitle("LSI Processing options")      
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         self.resize(700,400)
-        
+        self.lsiThr=lsiThr
         self.genLay=QVBoxLayout()
         
         ##Selection of sort LSI-----
@@ -204,7 +207,7 @@ class subwindow(QWidget):
         self.timeBoxL=QHBoxLayout()
         self.tBL=QLabel("Window size: ")
         self.wsVal=QSpinBox()
-        self.wsVal.setRange(1,30)
+        self.wsVal.setRange(1,60)
         self.wsVal.setSingleStep(1)
         self.wsVal.setValue(Ndef)
         self.wsVal.setMaximumWidth(80)
@@ -213,6 +216,9 @@ class subwindow(QWidget):
         self.timeBoxL.addWidget(self.wsVal)
         self.timeBoxL.addWidget(self.wsUL)
         self.timeBox.setLayout(self.timeBoxL)
+
+        self.wsVal.valueChanged.connect(self.changeWSize)
+        self.wsVal.setValue(self.lsiThr.window)
         
         ##Space box creation--------
         self.spaceBox=QGroupBox("Space contrast parameters",self)
@@ -266,6 +272,67 @@ class subwindow(QWidget):
         self.genLay.addWidget(self.expBox)
         self.setLayout(self.genLay)
                
+    def createContrastOptions(self, lsiThr):
+        self.setWindowTitle("Contrast options")      
+        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.resize(700,400)
+        self.lsiThr=lsiThr
+
+        self.contLayout=QVBoxLayout()
+
+        self.kVal=QSpinBox()
+        self.kVal.setRange(1,10000)
+        self.kVal.setSingleStep(1)         
+        self.kVal.setMaximumWidth(80)
+
+        self.maxSDVal=QDoubleSpinBox()
+        self.maxSDVal.setRange(0,1)
+        self.maxSDVal.setSingleStep(0.0001)         
+        self.maxSDVal.setMaximumWidth(80)
+
+        self.maxSDSlider=QSlider(Qt.Horizontal)
+        self.maxSDSlider.setMinimum(0)
+        self.maxSDSlider.setMaximum(10000)
+        self.maxSDSlider.setFocusPolicy(Qt.StrongFocus)
+        self.maxSDSlider.setTickPosition(QSlider.TicksBothSides)
+        self.maxSDSlider.setTickInterval(50)
+        self.maxSDSlider.setSingleStep(1)
+        
+        self.kSlider=QSlider(Qt.Horizontal)
+        self.kSlider.setMaximum(10000)
+        self.kSlider.setFocusPolicy(Qt.StrongFocus)
+        self.kSlider.setTickPosition(QSlider.TicksBothSides)
+        self.kSlider.setTickInterval(1000)
+        self.kSlider.setSingleStep(1)
+
+        self.kSlider.valueChanged.connect(self.kVal.setValue)
+        self.kVal.valueChanged.connect(self.kSlider.setValue)
+        self.kVal.valueChanged.connect(self.changeK)
+        self.kVal.setValue(self.lsiThr.k)
+
+        self.maxSDSlider.valueChanged.connect(self.handlemaxSDSlider)
+        self.maxSDVal.valueChanged.connect(self.handlemaxSDVal)
+        self.maxSDVal.setValue(self.lsiThr.maxSD)
+        self.maxSDVal.valueChanged.connect(self.change_maxSD)
+
+        self.contLayout.addWidget(self.kVal)
+        self.contLayout.addWidget(self.kSlider)
+        self.contLayout.addWidget(self.maxSDVal)
+        self.contLayout.addWidget(self.maxSDSlider)
+        self.setLayout(self.contLayout)
+
+    def handlemaxSDSlider(self):
+        self.maxSDVal.setValue(self.maxSDSlider.value()/10000)
+
+    def handlemaxSDVal(self):
+        self.maxSDSlider.setValue(self.maxSDVal.value()*10000)
+
+    def changeK(self):
+        self.lsiThr.change_k(self.kSlider.value())
+
+    def change_maxSD(self):
+        self.lsiThr.changeMaxSD(self.maxSDVal.value())
+
 class histo(QWidget):
     def __init__(self):
         super(histo,self).__init__(parent=None)
@@ -341,7 +408,7 @@ class dialog(QDialog):
 class App(QMainWindow):
     count=0
     colMap = pyqtSignal(str)
-    def __init__(self,screen,cameras,Ndef,eve):
+    def __init__(self,screen,cameras,Ndef,eve,lsiThr):
         super(App,self).__init__()
         #screen size
         self.screen=screen
@@ -364,6 +431,7 @@ class App(QMainWindow):
         self.Ndef=Ndef
         self.colorMaps=["jet","hot","aut","bone"]
         self.colorMap=self.colorMaps[0]
+        self.lsiThr=lsiThr
 
         #Painting red line section
         self.drawing = False
@@ -412,7 +480,7 @@ class App(QMainWindow):
         
     def createASubwindow2(self):
         self.procOpt=subwindow()
-        self.procOpt.createLSIProcessingOptions(self.Ndef,self.currentCam)
+        self.procOpt.createLSIProcessingOptions(self.Ndef,self.currentCam,self.lsiThr)
         self.procOpt.show()
         
     def selectedCameraThorlabs(self): 
@@ -485,13 +553,24 @@ class App(QMainWindow):
             else:
                 exec('self.{}Act.setFont(self.fNBond)'.format(i))
         
-    @pyqtSlot(QImage)
-    def setImage(self, image):
-        self.label.setPixmap(QPixmap.fromImage(image))
+    #@pyqtSlot(QImage)
+    def setImage(self, arr):
+        rgbImage = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
+        h, w,ch= rgbImage.shape
+        bytesPerLine = ch * w
+        convertToQtFormat = QtGui.QImage(rgbImage.data, w, h,bytesPerLine, QtGui.QImage.Format_RGB888)
+        p = convertToQtFormat.scaled(1353, 1233,QtCore.Qt.KeepAspectRatio)
+        self.label.setPixmap(QPixmap.fromImage(p))
         
-    @pyqtSlot(QImage)
+    #@pyqtSlot(QImage)
     def setImage2(self, image):
-        self.label2.setPixmap(QPixmap.fromImage(image))
+        #print(image)
+        rgbImage=cv2.cvtColor(cv2.applyColorMap(image, cv2.COLORMAP_JET), cv2.COLOR_BGR2RGB)
+        h, w, ch= rgbImage.shape
+        bytesPerLine = ch * w
+        convertToQtFormat = QtGui.QImage(rgbImage.data, w, h,bytesPerLine, QtGui.QImage.Format_RGB888)
+        p = convertToQtFormat.scaled(1353, 1233,QtCore.Qt.KeepAspectRatio)
+        self.label2.setPixmap(QPixmap.fromImage(p))
         
         
     def createHistogram(self):
@@ -502,6 +581,13 @@ class App(QMainWindow):
         self.histSubW.createHistSubW()
         self.histSubW.show()
         """
+
+    def createContOpt(self):
+        self.ContOpt=subwindow()
+        self.ContOpt.createContrastOptions(self.lsiThr)
+        self.ContOpt.show()
+
+    
     def initUI(self):
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height) 
@@ -571,6 +657,9 @@ class App(QMainWindow):
         self.boneAct=QAction("Bone",self)
         self.boneAct.triggered.connect(self.selectedBone)
         chcmct.addAction(self.boneAct)
+        self.contAct=QAction("Contrast Options",self)
+        viewMenu.addAction(self.contAct)
+        self.contAct.triggered.connect(self.createContOpt)
         
         #SEARCH---
         searchMenu = mainMenu.addMenu('Search')

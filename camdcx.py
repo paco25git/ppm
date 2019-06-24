@@ -86,27 +86,32 @@ class Camera(object):
             self.can_run.set()
             self.end_thread.clear()
 
-    def stream_thread(self,threadname='Thorlabs_Stream'):
+    def stream_thread(self,imqueue=None,app=None,threadname='Thorlabs_Stream'):
         print("Thorlabs Stream Thread initied")
         self.frame=0
         while True:
             self.can_run.wait() #Wait
             try:
                 self.waitEvent=win32event.WaitForSingleObject(self.handleEvent,1000)
+                self.ID=self.get_active_image_mem()-1
+                if self.ID==0:
+                    self.ID=self.NBuff 
                 if self.waitEvent==win32event.WAIT_TIMEOUT:
                     print("Timed out")
                 elif self.waitEvent==win32event.WAIT_OBJECT_0:
-                    print("Frame")
-                    arr=self.get_image_v2(self.mem[self.n-1][0])
-                    self.frame+=1
-                    if self.frame>=self.NBuff:
-                        self.frame=0
-                        print("Mem full")
-                if self.end_thread.is_set():
-                    print("Thread stoped")
-                    break
+                    arr=self.get_image_v2(self.memID.get(self.ID))
+                    if imqueue:
+                        imqueue.put(arr)
+                    if app:
+                        app.setImage(arr)
+                    self.frame+=1      
+                if self.frame>len(self.mem):
+                    self.frame=0
             finally:
                 self.thing_done.set() #Task done
+                if self.end_thread.is_set():
+                    break
+        print("Thread stoped")
 
     def pauseThread(self):
         self.can_run.clear()
@@ -167,7 +172,6 @@ class Camera(object):
             self.mem.append(self.initialize_memory())
             self.add_to_sequence(self.mem[i][0],self.mem[i][1])
             self.memID[self.mem[i][1].value]=self.mem[i][0]
-        print(self.memID)
         return self.mem
 	
     def get_image(self, buffer_number=None):

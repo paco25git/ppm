@@ -80,13 +80,13 @@ class CameraOpenError(Exception):
         return self.mesg
 
 class Camera(object):
-    def __init__(self):
+    def __init__(self,Id):
         if jaifactory==None:
             raise CameraOpenError("Jai_Factory.dll file not open, use load_library() method")
         else:
             self.camType="JaiCam"
-            self.name=None
-            self.Id=None
+            self.Id=c_char_p(Id)
+            self.name=str(self.Id.value)[-12:-1]
             self.driver=None
             self.camHandle=None
             self.pDS=None
@@ -365,10 +365,8 @@ class Camera(object):
     def stopThread(self):
         self.end_thread.set()
 
-    def open(self,Id):
-        self.Id=c_char_p(Id)
+    def open(self):
         self.camHandle=c_int()        
-        self.name=str(self.Id.value)[-12:-1]
         self.retval=jaifactory.J_Camera_Open(hFactory,self.Id,byref(self.camHandle),0)
         if self.retval==0:
             print("Camera %s open success"%self.name)
@@ -392,6 +390,36 @@ class Camera(object):
         else:
             print("Sensor (%s) Height = %d"%(self.name,self.camHeight.value))
         return self.camWidth,self.camHeight
+
+    #---------------------------------------------------------------------------------------------------------#
+    #  Registers actions                                                                                      #
+    #---------------------------------------------------------------------------------------------------------#
+    #Get the address of a J_NODE_TYPE IRegister,IIntReg,IStringReg and IFloatReg
+    #For using this methods, use before J_Camera_GetNode for obtain a valid handle to the specific node
+    def get_register_address(self,nodeName: str,pValue: c_longlong):
+        self.hNode=c_void_p()
+        sta=jaifactory.J_Camera_GetNodeByName(self.camHandle,c_char_p(nodeName.encode('utf-8')),byref(self.hNode))
+        if sta!=0:
+            print("Error getting the node handle: %d"%sta)
+            return False
+        else:
+            sta=jaifactory.J_Node_GetRegisterAddress(self.hNode,byref(pValue))
+            if sta!=0:
+                print("Error getting address register: %d"%sta)
+                return False
+            else:
+                return pValue
+    """
+    def get_register_length(self):
+
+    def get_register_value(self):
+
+    def set_register_value(self):
+
+    """
+    #---------------------------------------------------------------------------------------------------------#
+    #  GenICam Node functions                                                                                 #
+    #---------------------------------------------------------------------------------------------------------#
 
     def list_nodes(self):
         self.nFeatureNodes=c_longlong()
@@ -441,7 +469,51 @@ class Camera(object):
                                                     return False
                                                 else:
                                                     print("    Node %d.%d name: %s, type: %d"%(i,j,str(self.sSubNodeName.value),self.nodeType.value))
-        
+
+    def get_node_value(self,nodeName: str, pValue: c_longlong=c_longlong(0)):
+        self.hNode=c_void_p()
+        self.verify=c_bool()
+        sta=jaifactory.J_Camera_GetNodeByName(self.camHandle,c_char_p(nodeName.encode('utf-8')),byref(self.hNode))
+        if sta!=0:
+            print("Error getting the node handle: %d"%sta)
+            return False
+        else:
+            self.nodeType=c_uint()
+            sta=jaifactory.J_Node_GetType(self.hNode,byref(self.nodeType))
+            if sta!=0:
+                print("Error getting node type: %d"%sta)
+                return False
+            else:
+                if self.nodeType.value==102 or 103:
+                    sta=jaifactory.J_Node_GetValueInt64(self.hNode,self.verify,byref(pValue))
+                    if sta!=0:
+                        print("Error getting node value: %d"%sta)
+                        return False
+                    else:
+                        return pValue.value
+
+    def set_node_value(self,nodeName: str, pValue):
+        self.hNode=c_void_p()
+        self.verify=c_bool()
+        sta=jaifactory.J_Camera_GetNodeByName(self.camHandle,c_char_p(nodeName.encode('utf-8')),byref(self.hNode))
+        if sta!=0:
+            print("Error getting the node handle: %d"%sta)
+            return False
+        else:
+            self.nodeType=c_uint()
+            sta=jaifactory.J_Node_GetType(self.hNode,byref(self.nodeType))
+            if sta!=0:
+                print("Error getting node type: %d"%sta)
+                return False
+            else:
+                if self.nodeType.value==102 or 103:
+                    sta=jaifactory.J_Node_SetValueInt64(self.hNode,self.verify,c_longlong(pValue))
+                    if sta!=0:
+                        print("Error seting node value: %d"%sta)
+                        return False
+                    else:
+                        return True
+
     def get_pixel_format(self):
         self.pixelFormat=c_longlong()
         if jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("PixelFormat".encode('utf-8')),byref(self.pixelFormat))!=0:
@@ -452,6 +524,16 @@ class Camera(object):
             return self.pixelFormat.value
         #35127316=24 Bit RGB Color
         #17301505=8 Bit Monochrome
+
+    def set_pixel_format(self,newPixelFormat):
+        self.newPixelFormat=newPixelFormat
+        if jaifactory.J_Camera_SetValueInt64(self.camHandle,c_char_p("PixelFormat".encode('utf-8')),self.newPixelFormat)!=0:   
+            print("Error setting pixel format")
+            return False
+        else:
+            self.pixelFormat=self.newPixelFormat
+            print("Pixel format set to %d"%self.pixelFormat.value)
+            return True
 
     def get_frame_rate(self):
         self.frameRate=c_longlong()
@@ -478,6 +560,8 @@ class Camera(object):
         if self.pixelFormat.value==35127316:
             chan=3
         elif self.pixelFormat.value==17301505:
+            chan=1
+        elif self.pixelFormat.value==17301513:
             chan=1
         else:
             chan=1
@@ -543,39 +627,52 @@ load_library()
 cameras=update_camera_list("FD")
 myCam=Camera()
 
-myCam.open(cameras[0])
-print(myCam.get_size())
-#myCam.list_nodes()
+myCam.open(cameras[1])
+try:
+    #print(myCam.get_size())
+    #myCam.set_pixel_format(17301513)
+    myCam.list_nodes()
+    add=c_void_p()
+    myCam.get_register_address("LUTValueAll",add)
+    print(hex(add.value))
+    
+    val=myCam.get_node_value("LineSource")
+    print(val)
 
-#Data stream manual acquisition
+    myCam.set_node_value("LineSource",127)
 
-#......1......
-#Allocate memeroy buffers
-myCam.prepare_buffers()
-#myCam.unprepare_buffers()
-#......2......
-#Create condition and registed event
-#m_hStreamEvent = CreateEvent(NULL, true, false, NULL)
-#myCam.list_nodes()
+    val=myCam.get_node_value("LineSource")
+    print(val)
 
-myCam.start_aquisition()
+    #Data stream manual acquisition
+    """
+    #......1......
+    #Allocate memeroy buffers
+    myCam.prepare_buffers()
+    #myCam.unprepare_buffers()
+    #......2......
+    #Create condition and registed event
+    #m_hStreamEvent = CreateEvent(NULL, true, false, NULL)
+    #myCam.list_nodes()
 
-myCam.start_Thread()
-#threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
-#threadStream.start()
+    myCam.start_aquisition()
 
-time.sleep(15)
-#myCam.pauseThread()
-#time.sleep(3)
-#myCam.resumeThread()
-#time.sleep(5)
+    myCam.start_Thread()
+    #threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
+    #threadStream.start()
 
-myCam.stopThread()
-myCam.stop_aquisition()
-time.sleep(2)
+    time.sleep(15)
+    #myCam.pauseThread()
+    #time.sleep(3)
+    #myCam.resumeThread()
+    #time.sleep(5)
 
-myCam.close()
-
+    myCam.stopThread()
+    myCam.stop_aquisition()
+    time.sleep(2)
+    """
+finally:
+    myCam.close()
 
 
 
