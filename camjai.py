@@ -87,6 +87,8 @@ class Camera(object):
             self.camType="JaiCam"
             self.Id=c_char_p(Id)
             self.name=str(self.Id.value)[-12:-1]
+            self.name=self.name.replace("#","")
+            self.name=self.name.replace("-","")
             self.driver=None
             self.camHandle=None
             self.pDS=None
@@ -97,9 +99,9 @@ class Camera(object):
             self.thing_done.set()
             self.can_run.set()
             self.end_thread.clear()
+            self.isOpen=False
             
-            
-    def stream_thread(self,threadname='JAI_Stream'):
+    def stream_thread(self,imqueue=None,app=None,threadname='JAI_Stream'):
         print("JAI Stream Thread initied")
         self.iResult=None
         self.iSize=c_int()
@@ -302,12 +304,16 @@ class Camera(object):
                             ##Get data from the buffer
                             if self.pixelFormat.value==35127316:
                                 bgr=np.frombuffer(self.Buffers.get(self.eventData.value), np.uint8).reshape(768,1024,3)
-                                cv2.imshow('image',cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-                                cv2.waitKey(1)
+                                #cv2.imshow('image',cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+                                #cv2.waitKey(1)
                             elif self.pixelFormat.value==17301505:
                                 gray=np.frombuffer(self.Buffers.get(self.eventData.value), np.uint8).reshape(768,1024)
-                                cv2.imshow('image',gray)
-                                cv2.waitKey(1)
+                                #cv2.imshow('image',gray)
+                                #cv2.waitKey(1)
+                                if imqueue:
+                                    imqueue.put(gray)
+                                if app:
+                                    app.setImage(gray)                                
                             else:
                                 pass
                             
@@ -369,11 +375,13 @@ class Camera(object):
         self.camHandle=c_int()        
         self.retval=jaifactory.J_Camera_Open(hFactory,self.Id,byref(self.camHandle),0)
         if self.retval==0:
+            self.isOpen=True
             print("Camera %s open success"%self.name)
         
     def close(self):
         self.retval=jaifactory.J_Camera_Close(self.camHandle)
         if self.retval==0:
+            self.isOpen=False
             print("Camera %s closed"%self.name)
 
     def get_size(self):
@@ -513,7 +521,9 @@ class Camera(object):
                         return False
                     else:
                         return True
-
+    #---------------------------------------------------------------------------------------------------------#
+    #                                                                                                         #
+    #---------------------------------------------------------------------------------------------------------#
     def get_pixel_format(self):
         self.pixelFormat=c_longlong()
         if jaifactory.J_Camera_GetValueInt64(self.camHandle,c_char_p("PixelFormat".encode('utf-8')),byref(self.pixelFormat))!=0:
@@ -622,30 +632,30 @@ class Camera(object):
             #Remove the frame buffer from the Acquisition engine.
             print(jaifactory.J_DataStream_RevokeBuffer(self.pDS,self.m_pAquBufferID[i],byref(self.m_pAquBuffer[i]),byref(self.pPrivateData)))
 
-
+"""
 load_library()        
 cameras=update_camera_list("FD")
-myCam=Camera()
+myCam=Camera(cameras[1])
 
-myCam.open(cameras[1])
+myCam.open()
 try:
     #print(myCam.get_size())
     #myCam.set_pixel_format(17301513)
-    myCam.list_nodes()
+    #myCam.list_nodes()
     add=c_void_p()
-    myCam.get_register_address("LUTValueAll",add)
-    print(hex(add.value))
+    #myCam.get_register_address("LUTValueAll",add)
+    #print(hex(add.value))
     
     val=myCam.get_node_value("LineSource")
     print(val)
 
     myCam.set_node_value("LineSource",127)
 
-    val=myCam.get_node_value("LineSource")
-    print(val)
+    #val=myCam.get_node_value("LineSource")
+    #print(val)
 
     #Data stream manual acquisition
-    """
+    
     #......1......
     #Allocate memeroy buffers
     myCam.prepare_buffers()
@@ -670,9 +680,9 @@ try:
     myCam.stopThread()
     myCam.stop_aquisition()
     time.sleep(2)
-    """
+    
 finally:
     myCam.close()
 
-
+"""
 

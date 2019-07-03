@@ -26,7 +26,14 @@ import ppmgui
 import queue
 from events import Events
 from PIL import Image
+from configparser import RawConfigParser
 
+class Error(Exception):
+	def __init__(self, mesg):
+		self.mesg=mesg
+	def __str__(self):
+		return self.mesg
+		
 class nativeCamera():
     def __init__(self,name,index):
         self.name=name
@@ -103,20 +110,23 @@ class LSI(threading.Thread):
                         imgs.append(self.imqueue.get())
                     sd=np.std(imgs,axis=0,dtype=np.float64, ddof=1)
                     mn=np.mean(imgs,axis=0,dtype=np.float64)
-                    res2=sd/mn
+                    #res2=sd/mn
+                    res2=np.divide(sd,mn,dtype=np.float64)
                     #res2 = map(lambda x: x * self.k, res2)
                     res2*=self.k
-                    #self.maxI=np.amax(res2)
+                    self.maxI=np.amax(res2)
                     #res2=np.uint8(self.maxI*255)
 
                     #res2/=self.maxSD
                     #res2/=self.maxI
                     #res2*=255
+                    res2=np.floor(res2)
                     np.clip(res2,0,255,out=res2)
                     if self.app:
                         #imagen=Image.fromarray(res2,'L')
                         #print(res2)
                         self.app.setImage2(res2.astype(np.uint8))
+                        #self.app.setImage2(res2)
                     #res3=cv2.applyColorMap(res2.astype(np.uint8), cv2.COLORMAP_JET)
                     #cv2.imshow('image',res3)
                     #cv2.waitKey(1)
@@ -178,11 +188,21 @@ def histogram_calc(img,threadname='Histo'):
             
     logging.info("Thread %s: finishing", threadname)
 
+
 def main(args): 
     try:
+        #----config.ini file settings----
+        config_file="config.cfg"
+        local=RawConfigParser()
+        #Check if there is already config file
+        if not os.path.isfile(config_file):
+            raise Error("Error: missing config.cfg file")
+        else:
+            with open(config_file,'r') as f:
+                local.read_file(f)            
+        
+        
         imQueue=queue.Queue()
-        global eve
-        eve = threading.Event()
         format = "%(asctime)s: %(message)s"
         logging.basicConfig(format=format, level=logging.INFO,datefmt="%H:%M:%S")
 
@@ -198,13 +218,16 @@ def main(args):
         if len(cameras)>=1:
             if cameras[0].camType=='ThorlabsCam':
                 cameras[0].open()
-                mem=cameras[0].create_sequence(Ndef)
+                cameras[0].create_sequence(Ndef)
                 handleEvent=cameras[0].init_event()
                 cameras[0].enable_event()
                 cameras[0].start_continuous_capture()
             elif cameras[0].camType=='JaiCam':
                 pass
+        cameras[0].get_sensor_info()
+        cameras[0].get_gain_values()
         #Create histogram thread
+
         img=dataLSI()
         hisThread = threading.Thread(target=histogram_calc, args=(img,), daemon=True)
         hisThread.start()
@@ -214,7 +237,7 @@ def main(args):
         #Create GUI
         app = ppmgui.QApplication(sys.argv)
         screen = app.primaryScreen()       
-        ex = ppmgui.App(screen,cameras,Ndef,eve,lsiThread)
+        ex = ppmgui.App(screen,cameras,lsiThread,local)
         ex.show()       
         welcome=ppmgui.dialog()
         welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
@@ -228,16 +251,19 @@ def main(args):
         """
         lsiThread.set_gui(ex)
         #Create stream thread
-        streamTh=threading.Thread(target=cameras[0].stream_thread,args=(imQueue,ex,),daemon=True)
-        streamTh.start()
+        if cameras[0].camType=='ThorlabsCam':
+            streamTh=threading.Thread(target=cameras[0].stream_thread,args=(imQueue,ex,),daemon=True)
+            streamTh.start()
         lsiThread.start()
         sys.exit(app.exec_())
 
-    finally:
-        
+    finally:        
         for i in cameras:
             i.close()
         lsiThread.stopThread()
+        if os.path.isfile(config_file):
+            with open(config_file,'w') as f:
+                local.write(f)
         print("END")
 
 if __name__ == '__main__':

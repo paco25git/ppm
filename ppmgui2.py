@@ -1,6 +1,6 @@
 #Title: ppmgui.py 
 #Author: Francisco Gonzalez-Martinez
-#Date: 5/23/2019
+#Date: 7/1/2019
 
 #This is a library for making the GUI to the PPM device
 
@@ -19,14 +19,6 @@ from ctypes import *
 #import threading
 import win32event
 
-def do_processing(memory):
-    imgs=[]
-    for i in range(len(memory)):
-        imgs.append(np.frombuffer(memory[i][0], c_ubyte))
-    sd=np.std(imgs,axis=0)
-    mn=np.mean(imgs,axis=0)
-    res2=sd/mn
-    return res2
 
 #a class for making a thread that handles the camera capture
 class live(QThread):
@@ -336,23 +328,6 @@ class subwindow(QWidget):
     def change_maxSD(self):
         self.lsiThr.changeMaxSD(self.maxSDVal.value())
 
-class histo(QWidget):
-    def __init__(self):
-        super(histo,self).__init__(parent=None)
-        
-    def keyPressEvent(self, e):  
-        if e.key() == QtCore.Qt.Key_Escape:
-            
-            self.close()
-            
-    def closeEvent(self, event):
-        print ("User has clicked the red x on the main window")
-        event.accept()
-        
-    def createHistSubW(self):
-        self.setWindowTitle("Histogram tool")      
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
-        self.resize(1200,400)
            
 class dialog(QDialog):
     
@@ -501,7 +476,7 @@ class App(QMainWindow):
         self.camThorlabsAct.setFont(self.fBond)
         
         for i in self.cameras:
-            if i.name=="Thorlabs":
+            if i.name=="AD080GE_0":
                 exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
                 exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
@@ -511,7 +486,7 @@ class App(QMainWindow):
         self.camThorlabsAct.setFont(self.fBond)
         
         for i in self.cameras:
-            if i.name=="Thorlabs":
+            if i.name=="AD080GE_1":
                 exec('self.cam{}Act.setFont(self.fBond)'.format(i.name))
             else:
                 exec('self.cam{}Act.setFont(self.fNBond)'.format(i.name))
@@ -577,7 +552,6 @@ class App(QMainWindow):
             else:
                 exec('self.{}Act.setFont(self.fNBond)'.format(i))
         
-    #@pyqtSlot(QImage)
     def setImage(self, arr):
         rgbImage = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
         h, w,ch= rgbImage.shape
@@ -586,7 +560,6 @@ class App(QMainWindow):
         p = convertToQtFormat.scaled(1353, 1233,QtCore.Qt.KeepAspectRatio)
         self.label.setPixmap(QPixmap.fromImage(p))
         
-    #@pyqtSlot(QImage)
     def setImage2(self, image):
         #print(image)
         
@@ -596,20 +569,7 @@ class App(QMainWindow):
         convertToQtFormat = QtGui.QImage(rgbImage.data, w, h,bytesPerLine, QtGui.QImage.Format_RGB888)
         p = convertToQtFormat.scaled(1353, 1233,QtCore.Qt.KeepAspectRatio)
         self.label2.setPixmap(QPixmap.fromImage(p))
-        """
-        cv2.imshow('img',image)
-        cv2.waitKey(1)
-        """
-    """
-    def createHistogram(self):
-        self.histFlag=True
-        self.eve.set()
         
-        self.histSubW=histo()
-        self.histSubW.createHistSubW()
-        self.histSubW.show()
-    """
-
     def createContOpt(self):
         self.ContOpt=subwindow()
         self.ContOpt.createContrastOptions(self.lsiThr)

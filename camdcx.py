@@ -85,6 +85,7 @@ class Camera(object):
             self.thing_done.set()
             self.can_run.set()
             self.end_thread.clear()
+            self.isOpen=False
 
     def stream_thread(self,imqueue=None,app=None,threadname='Thorlabs_Stream'):
         print("Thorlabs Stream Thread initied")
@@ -125,7 +126,7 @@ class Camera(object):
     def stopThread(self):
         self.end_thread.set()
 
-    def open(self, bit_depth=8, roi_shape=(1280, 1024), roi_pos=(0,0), name="Thorlabs", exposure = 10, framerate = 10.0):
+    def open(self, bit_depth=8, roi_shape=(1280, 1024), roi_pos=(0,0), name="Thorlabs", exposure = 10, framerate = 20.0):
         self.bit_depth = bit_depth
         self.roi_shape = roi_shape
         self.name = name
@@ -147,6 +148,7 @@ class Camera(object):
             self.set_roi_pos(self.roi_pos)
             self.set_framerate(framerate)
             self.set_exposure(exposure)
+            self.isOpen=True
             return True
         else:
             #raise CameraOpenError("Opening the ThorCam failed with error code "+str(i))
@@ -157,6 +159,7 @@ class Camera(object):
             self.stop_live_capture()
             i = uc480.is_ExitCamera(self.handle) 
             if i == 0:
+                self.isOpen=False
                 print("ThorCam closed successfully.")
             else:
                 print("Closing ThorCam failed with error code "+str(i))
@@ -329,6 +332,7 @@ class Camera(object):
     def freeze_video(self):
         res=uc480.is_FreezeVideo(self.handle,0) #IS_DONT_WAIT=0x0000  IS_WAIT=1 defined in uc480.h
         return res
+
     def set_external_trigger(self):
         uc480.is_SetExternalTrigger(self.handle,0x0008)
 
@@ -341,8 +345,39 @@ class Camera(object):
         self.handleEvent=win32event.CreateEvent(None,False,False,None)
         s=uc480.is_InitEvent(self.handle, c_int(self.handleEvent), self.which)
         return self.handleEvent
-        
-        
+
+    def get_sensor_info(self):
+        class SENSORINFO(Structure):
+            _fields_= [('SensorID',c_uint),('strSensorName',c_char*32),('nColorMode',c_char),('nMaxWidth',c_uint),('nMaxHeight',c_uint),('bMasterGain',c_bool),('bRGain',c_bool),('bGGain',c_bool),('bBGain',c_bool),('bGlobShutter',c_bool),('wPixelSize',c_uint),('nUpperLeftBayerPixel',c_char),('Reserved',c_char*13)]
+        self.sensorInf=SENSORINFO()
+        if uc480.is_GetSensorInfo(self.handle, byref(self.sensorInf))!=0:
+            print("Error getting sensor info")
+            return False
+        else:
+            print("Sensor ID: %d"%self.sensorInf.SensorID)
+            print("Sensor name: %s"%self.sensorInf.strSensorName.decode('utf-8'))
+            print("Color mode: %s"%self.sensorInf.nColorMode.decode('utf-8'))
+            print("Max Width: %d"%self.sensorInf.nMaxWidth)
+            print("Max Height: %d"%self.sensorInf.nMaxHeight)
+            print("Master Gain?: %r"%self.sensorInf.bMasterGain)
+            print("Red Gain?: %r"%self.sensorInf.bRGain)
+            print("Green Gain?: %r"%self.sensorInf.bGGain)
+            print("Blue Gain?: %r"%self.sensorInf.bBGain)
+            print("Global shutter?: %r"%self.sensorInf.bGlobShutter)
+            print("Global shutter?: %r"%self.sensorInf.bGlobShutter)
+            print("Pixel Size: %d"%self.sensorInf.wPixelSize)
+            print("Upper Left Bayer Pixel: %s"%self.sensorInf.nUpperLeftBayerPixel)
+            return self.sensorInf
+    
+    def get_gain_values(self):
+        self.mGain=uc480.is_SetHardwareGain(self.handle,c_int(0x8000),c_int(-1),c_int(-1),c_int(-1))
+        print("Master Gain= %d"%self.mGain)
+    """
+    def set_master_gain(self,value):
+        self.masterGain=value
+        self.
+        if uc480.is_SetHardwareGain(self.handle,)
+    """    
         
         
         
