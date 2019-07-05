@@ -386,7 +386,7 @@ class dialog(QDialog):
 class App(QMainWindow):
     count=0
     colMap = pyqtSignal(str)
-    def __init__(self,screen,cameras,lsiThr,confData):
+    def __init__(self,screen,cameras,lsiThr,confData,thLThread=None,jaiThread=None):
         super(App,self).__init__()
         #screen size
         self.screen=screen
@@ -410,6 +410,8 @@ class App(QMainWindow):
         self.colorMap=self.colorMaps[0]
         self.lsiThr=lsiThr
         self.confData=confData
+        self.thLThread=thLThread
+        self.jaiThread=jaiThread
 
         #Painting red line section
         self.drawing = False
@@ -423,6 +425,16 @@ class App(QMainWindow):
         self.setMouseTracking(True)
 
         self.initUI()
+
+    def setThread(self, threadName: str, thread):
+        if threadName=='Thorlabs':
+            self.thLThread=thread
+            return True
+        elif threadName=='Jai':
+            self.jaiThread=thread
+            return True
+        else:
+            return False
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

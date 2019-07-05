@@ -115,6 +115,8 @@ class Camera(object):
         self.lastChunkLayoutID=c_ulonglong(0)
         self.iNumChunks=c_size_t(0)
         self.iLastNumChunks=c_size_t(0)
+        self.imqueue=imqueue
+        self.app=app
         
         class J_SINGLE_CHUNK_DATA(Structure):
             _fields_=[('ChunkID',c_ulonglong),('ChunkOffset',c_longlong),('ChunkLength',c_size_t)]
@@ -143,7 +145,7 @@ class Camera(object):
             print("Error starting acquisition")
             #self.m_bStreamStarted = True
         #Loop of stream processing
-        self.iTimeout=c_uint(5000)
+        self.iTimeout=c_uint(10000)
         self.nFrames=0
         #create window
         self.sizeW=(c_uint*2)(100,100)
@@ -310,10 +312,10 @@ class Camera(object):
                                 gray=np.frombuffer(self.Buffers.get(self.eventData.value), np.uint8).reshape(768,1024)
                                 #cv2.imshow('image',gray)
                                 #cv2.waitKey(1)
-                                if imqueue:
-                                    imqueue.put(gray)
-                                if app:
-                                    app.setImage(gray)                                
+                                if self.imqueue!=None:
+                                    self.imqueue.put(gray)
+                                if self.app!=None:
+                                    self.app.setImage(gray)                                
                             else:
                                 pass
                             
@@ -671,7 +673,7 @@ try:
     #threadStream = threading.Thread(target=myCam.stream_thread, args=(" ",), daemon=True)
     #threadStream.start()
 
-    time.sleep(15)
+    time.sleep(25)
     #myCam.pauseThread()
     #time.sleep(3)
     #myCam.resumeThread()
@@ -683,6 +685,6 @@ try:
     
 finally:
     myCam.close()
-
 """
+
 

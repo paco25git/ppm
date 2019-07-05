@@ -18,7 +18,7 @@ import cv2
 from matplotlib import pyplot as plt
 import camdcx    #Library for thorlabs camera functions
 import camjai    #Library for jai camera functions
-import ppmgui    #graphical user interface defined in this file
+import ppmgui2    #graphical user interface defined in this file
 import threading 
 from events import Events
 import logging
@@ -90,7 +90,7 @@ class camerasConnected(list):
     # Function for set the active camera        #
     #-------------------------------------------#
     def set_active(self,index):
-        if self>0:
+        if self.length>0:
             if index in range(0,len(self)):
                 self.active=index
                 return True
@@ -224,11 +224,11 @@ def main(args):
         lsiThread=LSI(imQueue)  #thread for lsi processing
         #_________create the GUI_____________#
 
-        app = ppmgui.QApplication(sys.argv)
+        app = ppmgui2.QApplication(sys.argv)
         screen = app.primaryScreen()       
-        ex = ppmgui.App(screen,cameras,lsiThread,temp)
+        ex = ppmgui2.App(screen,cameras,lsiThread,temp)
         ex.show()       
-        welcome=ppmgui.dialog()
+        welcome=ppmgui2.dialog()
         welcome.createWelcomeDialog("ppm","Welcome to PPM v%s"%version)
         lsiThread.set_gui(ex)
 
@@ -236,13 +236,23 @@ def main(args):
 
         for i in cameras:  #find cameras types and create threads for that connected 
             if i.camType=='ThorlabsCam':
-                streamTh=threading.Thread(target=i.stream_thread,args=(imQueue,ex),daemon=True)  #create thread for tholabs camera
+                streamTh=threading.Thread(target=i.stream_thread,args=(imQueue,ex,),daemon=True)  #create thread for tholabs camera
+                ex.setThread("Thorlabs",streamTh)
                 break
 
         for i in cameras:  #find cameras types and create threads for that connected 
             if i.camType=='JaiCam':
-                streamJai=threading.Thread(target=i.stream_thread,args=(imQueue,ex),daemon=True)   #create thread for tholabs camera
+                streamJai=threading.Thread(target=i.stream_thread,args=(imQueue,ex,),daemon=True)   #create thread for tholabs camera
+                ex.setThread("Jai",streamJai)
                 break
+        if temp.get('main','startingmode')=='auto':
+            if cameras[cameras.active].camType=='JaiCam':
+                cameras[cameras.active].open()
+                cameras[cameras.active].prepare_buffers()
+                cameras[cameras.active].start_aquisition()
+                streamJai.start()
+        lsiThread.start()
+        sys.exit(app.exec_())
 
     finally:
         print(cameras)
